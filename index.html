@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>إدارة عيادة الرياض - الحجوزات والدور</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <style>
     :root {
       --bg: #f1f5f9;
@@ -215,16 +216,29 @@
 </head>
 <body>
 
+<div id="loginOverlay" style="position:fixed; inset:0; background:var(--bg); z-index:300; display:flex; align-items:center; justify-content:center; padding:18px;">
+  <div style="background:#fff; width:100%; max-width:380px; border-radius:16px; padding:22px 18px; box-shadow:0 8px 30px rgba(0,0,0,0.12);">
+    <h2 style="margin:0 0 4px; font-size:18px; color:var(--primary-dark);">🏥 دخول الموظفين</h2>
+    <p style="margin:0 0 14px; font-size:12.5px; color:var(--muted);">سجّل دخولك بالحساب اللي المدير عمله لك.</p>
+    <div class="field-group"><label class="field-label">الإيميل</label>
+      <input type="email" class="field-input" id="loginEmail" autocomplete="username" style="direction:ltr; text-align:right;" /></div>
+    <div class="field-group"><label class="field-label">كلمة السر</label>
+      <input type="password" class="field-input" id="loginPass" autocomplete="current-password" style="direction:ltr; text-align:right;" onkeydown="if(event.key==='Enter')doLogin()" /></div>
+    <button class="btn-save" onclick="doLogin()">دخول</button>
+    <div id="loginMsg" style="margin-top:10px; font-size:12.5px; font-weight:700; color:var(--red); min-height:16px;"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <div class="topbar" id="topbar">
   <div class="topbar-row">
     <div style="flex:1; min-width:0;">
-      <input type="text" class="clinic-title" id="clinicTitleInput" onchange="updateClinicTitle()" />
-      <div class="role-badge" id="roleBadge" onclick="toggleAdminAuth()">👤 وضع الاستقبال (اضغط لدخول المدير)</div>
+      <input type="text" class="clinic-title" id="clinicTitleInput" readonly />
+      <div class="role-badge" id="roleBadge" onclick="doLogout()">...</div>
     </div>
     <div class="header-actions">
-      <button class="icon-btn" onclick="openSyncModal()">⇄ مزامنة</button>
+      <span class="icon-btn" id="connDot" style="cursor:default;">⏳</span>
       <button class="icon-btn" onclick="openDirectoryModal()">📒 السجل</button>
     </div>
   </div>
@@ -334,9 +348,9 @@
     <p style="font-size:13px; color:var(--muted); margin-top:0;">اختر يوم العيادة القادم لتسجيل الحجوزات الجديدة فيه (الأيام السابقة تظل محفوظة في القائمة):</p>
     <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;" id="upcomingClinicDays"></div>
     <div class="field-group">
-      <label class="field-label">أو اكتب تاريخ مخصص:</label>
-      <input type="text" class="field-input" id="customSessionLabel" placeholder="مثال: السبت 28/11/2026" />
-      <button class="btn-save" style="margin-top:8px;" onclick="createCustomSession()">إنشاء وفتح اليوم</button>
+      <label class="field-label">أو اختر تاريخ آخر:</label>
+      <input type="date" class="field-input" id="customSessionDate" style="direction:ltr; text-align:right;" />
+      <button class="btn-save" style="margin-top:8px;" onclick="createCustomSession()">فتح اليوم</button>
     </div>
   </div>
 </div>
@@ -353,25 +367,6 @@
       <button class="btn-save" style="background:#16a34a;" onclick="shareWhatsAppReport()">📤 إرسال التقرير على واتساب</button>
       <button class="btn-save" style="background:#0284c7;" onclick="exportSessionExcel()">📥 تحميل ملف إكسيل (.xlsx)</button>
       <button class="btn-save" style="background:#334155;" onclick="copyTextReport()">📋 نسخ التقرير نصياً</button>
-    </div>
-  </div>
-</div>
-
-<!-- Sync Modal -->
-<div class="modal-backdrop" id="syncModal" onclick="closeModalOnBg(event, 'syncModal')">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 class="modal-title">⇄ مزامنة الحجوزات بين موظفين</h3>
-      <button class="close-btn" onclick="closeModal('syncModal')">إغلاق</button>
-    </div>
-    <div class="field-group" style="background:#f0fdfa; padding:12px; border-radius:12px; border:1px solid #ccfbf1;">
-      <label class="field-label" style="color:var(--primary-dark);">1️⃣ نسخ حجوزات هذا اليوم لإرسالها:</label>
-      <button class="btn-save" onclick="copySyncCode()">📋 نسخ كود المزامنة</button>
-    </div>
-    <div class="field-group" style="background:#eff6ff; padding:12px; border-radius:12px; border:1px solid #bfdbfe;">
-      <label class="field-label" style="color:#1e3a8a;">2️⃣ لصق كود زميلك لدمج الحالات:</label>
-      <textarea class="sync-textarea" id="pasteSyncInput" placeholder="CLINIC_V2:..."></textarea>
-      <button class="btn-save" style="background:#1d4ed8;" onclick="mergeSyncCode()">🔄 دمج الحالات الآن</button>
     </div>
   </div>
 </div>
@@ -396,314 +391,234 @@
       <button class="close-btn" onclick="closeModal('toolsModal')">إغلاق</button>
     </div>
     <div id="adminToolsSection" style="display:flex; flex-direction:column; gap:9px;">
-      <button class="btn-save" id="authActionBtn" onclick="toggleAdminAuth()">🔐 تفعيل وضع المدير (باسورد)</button>
-      <button class="btn-save" style="background:#475569;" id="changePassBtn" style="display:none;" onclick="changeAdminPassword()">🔑 تغيير كلمة سر المدير</button>
-      <button class="btn-danger" id="clearDayBtn" onclick="clearCurrentSession()">🧹 تفريغ قائمة اليوم الحالي (مدير فقط)</button>
+      <button class="btn-save" style="background:#475569;" onclick="refreshAll(); showToast('تم التحديث ✓');">🔄 تحديث البيانات الآن</button>
+      <button class="btn-save" style="background:#334155;" onclick="doLogout()">🚪 تسجيل الخروج</button>
+      <button class="btn-danger" id="clearDayBtn" style="display:none;" onclick="clearCurrentSession()">🧹 تفريغ قائمة اليوم الحالي (مدير فقط)</button>
     </div>
   </div>
 </div>
 
 <script>
-const STORAGE_KEY = 'elryad_clinic_db_v2';
+/* ==================== CONFIG (عدّل القيمتين دول بس) ==================== */
+const CONFIG = {
+  SUPABASE_URL: 'https://nmbnvnvxlfxcnmvybxaa.supabase.co',        // مثال: https://abcdxyz.supabase.co
+  SUPABASE_ANON_KEY: 'sb_publishable_WD67eZfPEuFp0OfJsfQUUQ_vVStGp2L',      // Project Settings > API > anon public
+  CLINIC_TITLE: 'عيادة د. محمد / حازم'
+};
+
+let sb = null;
 let isAdmin = false;
-
-function getNextClinicDates() {
-  const results = [];
-  const d = new Date();
-  for (let i = 0; i < 14 && results.length < 4; i++) {
-    const day = d.getDay(); // 6 = Saturday, 3 = Wednesday
-    if (day === 6 || day === 3) {
-      const dayName = day === 6 ? 'السبت' : 'الأربعاء';
-      const iso = d.toISOString().slice(0, 10);
-      const label = `${dayName} ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
-      results.push({ id: iso, label });
-    }
-    d.setDate(d.getDate() + 1);
-  }
-  return results;
-}
-
-function initDefaultDB() {
-  const upcoming = getNextClinicDates();
-  const firstSession = upcoming[0] || { id: '2026-11-25', label: 'الأربعاء 25/11/2026' };
-  return {
-    clinicTitle: 'عيادة د. محمد / حازم',
-    adminPass: '1234',
-    activeSessionId: firstSession.id,
-    sessions: {
-      [firstSession.id]: {
-        id: firstSession.id,
-        label: firstSession.label,
-        patients: []
-      }
-    },
-    directory: [
-      { name: 'نوح عمرو', phone: '01119073864', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'بسمه رفعت', phone: '01141765644', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'كندا أحمد', phone: '01095867507', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'هاله عشوش', phone: '01095691616', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'سما سعيد', phone: '', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'سيدة رجب صالح', phone: '0100071109', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'محمد عبد الرازق', phone: '01124040016', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'نعيمة جمال', phone: '', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'هيثم محمد على', phone: '01099178624', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'أحمد جابر', phone: '01142019212', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'فرح طارق', phone: '01155060402', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'رنيم خالد', phone: '01069749440', lastVisit: '2026-11-25', lastType: 'exam', visitsCount: 1 },
-      { name: 'صباح', phone: '', lastVisit: '2026-11-25', lastType: 'consult', visitsCount: 1 },
-      { name: 'محمد هيثم محمد', phone: '', lastVisit: '2026-11-25', lastType: 'consult', visitsCount: 1 }
-    ]
-  };
-}
-
-let db = loadDB();
+let me = null;
+let channel = null;
+let refreshTimer = null;
+let saving = false;
+let db = { clinicTitle: CONFIG.CLINIC_TITLE, activeDay: null, days: [], patients: [], directory: [] };
 let currentFilter = 'all';
 let searchQuery = '';
 let editingId = null;
 let selectedType = 'exam';
 let selectedPay = 'كاش';
+let acMatches = [];
 
-function loadDB() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.sessions) return parsed;
-    }
-  } catch (e) {}
-  return initDefaultDB();
+const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+function dayLabel(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return `${DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 }
-
-function saveDB() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-  } catch (e) {
-    showToast('تعذر الحفظ في المتصفح');
-  }
-}
-
 function getCurrentSession() {
-  if (!db.sessions[db.activeSessionId]) {
-    const keys = Object.keys(db.sessions);
-    if (keys.length) db.activeSessionId = keys[0];
-    else {
-      const def = initDefaultDB();
-      db.sessions = def.sessions;
-      db.activeSessionId = def.activeSessionId;
-    }
-  }
-  return db.sessions[db.activeSessionId];
+  return { id: db.activeDay, label: dayLabel(db.activeDay), patients: db.patients };
+}
+function fail(e) {
+  console.error(e);
+  const msg = (e && e.message) || '';
+  if (msg.includes('LOCKED')) showToast('⛔ غير مسموح — للمدير فقط');
+  else if (msg.includes('row-level security')) showToast('⛔ ليس لديك صلاحية');
+  else showToast('تعذر الاتصال بالسيرفر');
+}
+function mapVisit(r) {
+  return { id: r.id, name: r.name, phone: r.phone || '', type: r.type, fee: r.fee,
+    payMethod: r.pay_method, note: r.note || '', status: r.status, updatedAt: Date.parse(r.updated_at) || 0 };
+}
+function mapPatient(r) {
+  return { id: r.id, name: r.name, phone: r.phone || '', lastVisit: r.last_visit || '',
+    lastType: r.last_type || 'exam', visitsCount: r.visits_count || 1 };
 }
 
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.style.display = 'block';
-  clearTimeout(window._toastTimer);
-  window._toastTimer = setTimeout(() => { t.style.display = 'none'; }, 2700);
+/* ==================== AUTH ==================== */
+function showLogin(msg) {
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('loginMsg').textContent = msg || '';
+}
+function hideLogin() { document.getElementById('loginOverlay').style.display = 'none'; }
+
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPass').value;
+  if (!email || !password) return showLogin('اكتب الإيميل وكلمة السر');
+  document.getElementById('loginMsg').textContent = 'جاري الدخول...';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) return showLogin('الإيميل أو كلمة السر غير صحيحة');
+  await afterLogin(data.user);
 }
 
-/* ==================== ADMIN / STAFF PERMISSIONS ==================== */
-function toggleAdminAuth() {
-  if (isAdmin) {
-    isAdmin = false;
-    updateRoleUI();
-    showToast('تم الرجوع لوضع الاستقبال 🔒');
-    return;
-  }
-  const pass = prompt('أدخل كلمة سر المدير (الافتراضي 1234):');
-  if (pass === null) return;
-  if (pass === (db.adminPass || '1234')) {
-    isAdmin = true;
-    updateRoleUI();
-    closeModal('toolsModal');
-    showToast('تم تفعيل وضع المدير 🔓');
-  } else {
-    showToast('❌ كلمة السر غير صحيحة');
-  }
+async function doLogout() {
+  if (!confirm('تسجيل الخروج؟')) return;
+  if (channel) { sb.removeChannel(channel); channel = null; }
+  await sb.auth.signOut();
+  me = null; isAdmin = false; closeModal('toolsModal');
+  showLogin('');
 }
 
+async function afterLogin(user) {
+  const { data: prof, error } = await sb.from('profiles').select('role, full_name').eq('id', user.id).maybeSingle();
+  if (error) { showLogin('تعذر الاتصال بالسيرفر'); return; }
+  if (!prof) {
+    await sb.auth.signOut();
+    return showLogin('الحساب غير مفعّل — اطلب من المدير تفعيله');
+  }
+  me = prof;
+  isAdmin = prof.role === 'admin';
+  hideLogin();
+  const saved = localStorage.getItem('clinic_active_day');
+  db.activeDay = saved || getNextClinicDates()[0].id;
+  updateRoleUI();
+  await refreshAll();
+  subscribeRealtime();
+}
+
+/* ==================== DATA LOADING ==================== */
+async function loadDays() {
+  const { data, error } = await sb.from('day_counts').select('day, n');
+  if (error) throw error;
+  db.days = data.map(r => ({ day: r.day, n: Number(r.n) }));
+}
+async function loadPatients() {
+  const { data, error } = await sb.from('visits').select('*')
+    .eq('day', db.activeDay).order('created_at').order('id');
+  if (error) throw error;
+  db.patients = data.map(mapVisit);
+}
+async function loadDirectory() {
+  const { data, error } = await sb.from('patients').select('*').order('name').limit(5000);
+  if (error) throw error;
+  db.directory = data.map(mapPatient);
+}
+async function refreshAll() {
+  try {
+    await Promise.all([loadDays(), loadPatients(), loadDirectory()]);
+    render();
+  } catch (e) { fail(e); }
+}
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => { if (me) refreshAll(); }, 250);
+}
+
+/* ==================== REALTIME ==================== */
+function setConn(ok) {
+  const el = document.getElementById('connDot');
+  el.textContent = ok ? '🟢 متصل' : '🔴 غير متصل';
+}
+function subscribeRealtime() {
+  if (channel) sb.removeChannel(channel);
+  channel = sb.channel('clinic-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, scheduleRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, scheduleRefresh)
+    .subscribe(status => {
+      setConn(status === 'SUBSCRIBED');
+      if (status === 'SUBSCRIBED') scheduleRefresh();
+    });
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && me) scheduleRefresh(); });
+window.addEventListener('online', () => { if (me) scheduleRefresh(); });
+window.addEventListener('offline', () => setConn(false));
+
+/* ==================== ROLE UI ==================== */
 function updateRoleUI() {
   const topbar = document.getElementById('topbar');
   const badge = document.getElementById('roleBadge');
-  const authBtn = document.getElementById('authActionBtn');
-  const chgBtn = document.getElementById('changePassBtn');
+  const clearBtn = document.getElementById('clearDayBtn');
+  const who = me && me.full_name ? ' — ' + me.full_name : '';
   if (isAdmin) {
     topbar.classList.add('admin-mode');
-    badge.textContent = '🔓 وضع المدير مُفعّل (اضغط للقفل)';
-    authBtn.textContent = '🔒 قفل وضع المدير';
-    chgBtn.style.display = 'block';
+    badge.textContent = '🔑 مدير' + who + ' (اضغط للخروج)';
   } else {
     topbar.classList.remove('admin-mode');
-    badge.textContent = '👤 وضع الاستقبال (اضغط لدخول المدير)';
-    authBtn.textContent = '🔐 تفعيل وضع المدير (باسورد)';
-    chgBtn.style.display = 'none';
+    badge.textContent = '👤 استقبال' + who + ' (اضغط للخروج)';
   }
+  if (clearBtn) clearBtn.style.display = isAdmin ? 'block' : 'none';
 }
 
-function changeAdminPassword() {
-  if (!isAdmin) return;
-  const np = prompt('اكتب كلمة السر الجديدة للمدير:');
-  if (np && np.trim().length >= 3) {
-    db.adminPass = np.trim();
-    saveDB();
-    showToast('تم تغيير كلمة السر بنجاح ✓');
-  } else if (np !== null) {
-    showToast('كلمة السر قصيرة جداً');
-  }
-}
-
-function updateClinicTitle() {
-  db.clinicTitle = document.getElementById('clinicTitleInput').value.trim() || 'العيادة';
-  saveDB();
-}
-
-/* ==================== CLINIC DAYS MANAGEMENT ==================== */
+/* ==================== CLINIC DAYS ==================== */
 function renderDaySelector() {
-  const sel = document.getElementById('daySelector');
-  const keys = Object.keys(db.sessions).sort().reverse();
-  sel.innerHTML = keys.map(k => {
-    const s = db.sessions[k];
-    return `<option value="${s.id}" ${s.id === db.activeSessionId ? 'selected' : ''}>${s.label} (${s.patients.length})</option>`;
-  }).join('');
+  const map = new Map();
+  db.days.forEach(d => map.set(d.day, d.n));
+  getNextClinicDates().forEach(u => { if (!map.has(u.id)) map.set(u.id, 0); });
+  map.set(db.activeDay, db.patients.length);
+  const keys = [...map.keys()].sort().reverse();
+  document.getElementById('daySelector').innerHTML = keys.map(k =>
+    `<option value="${k}" ${k === db.activeDay ? 'selected' : ''}>${esc(dayLabel(k))} (${map.get(k)})</option>`).join('');
 }
 
-function switchSession(id) {
-  db.activeSessionId = id;
-  saveDB();
-  render();
+async function switchSession(id) {
+  db.activeDay = id;
+  localStorage.setItem('clinic_active_day', id);
+  await refreshAll();
 }
 
 function openNewSessionModal() {
-  const upcoming = getNextClinicDates();
   const box = document.getElementById('upcomingClinicDays');
-  box.innerHTML = upcoming.map(u => {
-    const exists = !!db.sessions[u.id];
-    return `<button class="btn-save" style="background:${exists ? '#0284c7' : '#0f766e'}; text-align:right; display:flex; justify-content:space-between;" onclick="selectOrCreateSession('${u.id}', '${u.label}')">
-      <span>📅 ${u.label}</span>
-      <span>${exists ? 'مفتوح بالفعل ↗' : '+ إنشاء'}</span>
+  box.innerHTML = getNextClinicDates().map(u => {
+    const exists = db.days.some(d => d.day === u.id) || u.id === db.activeDay;
+    return `<button class="btn-save" style="background:${exists ? '#0284c7' : '#0f766e'}; text-align:right; display:flex; justify-content:space-between;" onclick="selectOrCreateSession('${u.id}')">
+      <span>📅 ${esc(u.label)}</span>
+      <span>${exists ? 'فتح ↗' : '+ فتح'}</span>
     </button>`;
   }).join('');
-  document.getElementById('customSessionLabel').value = '';
+  document.getElementById('customSessionDate').value = '';
   document.getElementById('newSessionModal').classList.add('open');
 }
-
-function selectOrCreateSession(id, label) {
-  if (!db.sessions[id]) {
-    db.sessions[id] = { id, label, patients: [] };
-  }
-  db.activeSessionId = id;
-  saveDB();
+async function selectOrCreateSession(id) {
   closeModal('newSessionModal');
-  render();
-  showToast(`تم فتح: ${label}`);
+  await switchSession(id);
+  showToast('تم فتح: ' + dayLabel(id));
 }
-
 function createCustomSession() {
-  const lbl = document.getElementById('customSessionLabel').value.trim();
-  if (!lbl) return showToast('اكتب التاريخ أولاً');
-  const id = 'custom_' + Date.now();
-  selectOrCreateSession(id, lbl);
+  const v = document.getElementById('customSessionDate').value;
+  if (!v) return showToast('اختر التاريخ أولاً');
+  selectOrCreateSession(v);
 }
 
-function clearCurrentSession() {
-  if (!isAdmin) {
-    showToast('⛔ هذه الصلاحية للمدير فقط');
-    return;
-  }
+async function clearCurrentSession() {
+  if (!isAdmin) return showToast('⛔ هذه الصلاحية للمدير فقط');
   const sess = getCurrentSession();
   if (!confirm(`هل أنت متأكد من مسح جميع حالات (${sess.label})؟`)) return;
-  sess.patients = [];
-  saveDB();
+  const { error } = await sb.from('visits').delete().eq('day', db.activeDay);
+  if (error) return fail(error);
   closeModal('toolsModal');
-  render();
+  await refreshAll();
   showToast('تم تفريغ قائمة اليوم');
 }
 
-/* ==================== PATIENT ADD / EDIT / DIRECTORY ==================== */
-function onNameInput() {
-  const val = document.getElementById('ptName').value.trim().toLowerCase();
-  const box = document.getElementById('autocompleteBox');
-  if (val.length < 2) {
-    box.style.display = 'none';
-    return;
-  }
-  const matches = db.directory.filter(p => p.name.toLowerCase().includes(val) || (p.phone && p.phone.includes(val))).slice(0, 6);
-  if (!matches.length) {
-    box.style.display = 'none';
-    return;
-  }
-  box.innerHTML = matches.map((m, idx) => `
-    <div class="ac-item" onclick="pickDirectoryPatient('${m.name.replace(/'/g, "\\'")}', '${m.phone || ''}', '${m.lastVisit || ''}', '${m.lastType || 'exam'}')">
-      <div>
-        <strong>${m.name}</strong>
-        <div style="font-size:11px; color:var(--muted);">${m.phone || 'بدون رقم'} • زيارات سابقة: ${m.visitsCount || 1}</div>
-      </div>
-      <span style="font-size:11px; color:var(--primary); font-weight:700;">اختيار ↵</span>
-    </div>
-  `).join('');
-  box.style.display = 'block';
-}
-
-function onPhoneInput() {
-  const ph = document.getElementById('ptPhone').value.trim();
-  if (ph.length >= 7) {
-    const found = db.directory.find(p => p.phone === ph);
-    if (found && !document.getElementById('ptName').value.trim()) {
-      pickDirectoryPatient(found.name, found.phone, found.lastVisit, found.lastType);
-    }
-  }
-}
-
+/* ==================== PATIENTS ==================== */
 function pickDirectoryPatient(name, phone, lastVisit, lastType) {
   document.getElementById('ptName').value = name;
   document.getElementById('ptPhone').value = phone;
   document.getElementById('autocompleteBox').style.display = 'none';
 
   const banner = document.getElementById('historyBanner');
-  if (lastVisit) {
-    const diffDays = Math.floor((new Date() - new Date(lastVisit)) / (1000 * 60 * 60 * 24));
-    const daysTxt = isNaN(diffDays) ? lastVisit : (diffDays <= 0 ? 'اليوم' : `منذ ${diffDays} يوم`);
-    banner.style.display = 'block';
-    if (lastType === 'exam' && diffDays >= 0 && diffDays <= 14) {
-      banner.innerHTML = `💡 مريض متكرر (آخر كشف: ${daysTxt}) — تم ضبطها كـ <u>استشارة مجانية</u> تلقائياً`;
-      selectVisitType('consult', 0);
-      selectPayMethod('آجل / مجاني', document.querySelector('[data-pay="آجل / مجاني"]'));
-    } else {
-      banner.innerHTML = `💡 مريض مسجل سابقاً (آخر زيارة: ${daysTxt})`;
-    }
-  }
-}
-
-function selectVisitType(type, defaultFee) {
-  selectedType = type;
-  document.getElementById('typeExamBtn').classList.toggle('active', type === 'exam' && defaultFee === 200);
-  document.getElementById('typeConsultBtn').classList.toggle('active', type === 'consult');
-  document.getElementById('typeCustomBtn').classList.toggle('active', defaultFee === '');
-  if (defaultFee !== '') {
-    document.getElementById('ptFee').value = defaultFee;
-    if (defaultFee === 0) {
-      selectPayMethod('آجل / مجاني', document.querySelector('[data-pay="آجل / مجاني"]'));
-    } else if (selectedPay === 'آجل / مجاني') {
-      selectPayMethod('كاش', document.querySelector('[data-pay="كاش"]'));
-    }
+  if (!lastVisit) return;
+  const diff = Math.round((new Date(db.activeDay + 'T00:00:00') - new Date(lastVisit + 'T00:00:00')) / 86400000);
+  banner.style.display = 'block';
+  if (diff === 0) {
+    banner.innerHTML = '⚠️ المريض مسجل بالفعل في هذا اليوم';
+  } else if (lastType === 'exam' && diff > 0 && diff <= 14) {
+    banner.innerHTML = `💡 مريض متكرر (آخر كشف: منذ ${diff} يوم) — تم ضبطها كـ <u>استشارة مجانية</u> تلقائياً`;
+    selectVisitType('consult', 0);
+    selectPayMethod('آجل / مجاني', document.querySelector('[data-pay="آجل / مجاني"]'));
   } else {
-    document.getElementById('ptFee').value = '';
-    document.getElementById('ptFee').focus();
+    banner.innerHTML = `💡 مريض مسجل سابقاً (آخر زيارة: ${diff > 0 ? 'منذ ' + diff + ' يوم' : esc(lastVisit)})`;
   }
-}
-
-function selectPayMethod(method, el) {
-  selectedPay = method;
-  document.querySelectorAll('.pay-pill').forEach(p => p.classList.remove('active'));
-  if (el) el.classList.add('active');
-}
-
-function appendNote(txt) {
-  const inp = document.getElementById('ptNote');
-  const cur = inp.value.trim();
-  if (!cur) inp.value = txt;
-  else if (!cur.includes(txt)) inp.value = cur + ' - ' + txt;
 }
 
 function openPatientModal(id) {
@@ -744,124 +659,244 @@ function openPatientModal(id) {
   setTimeout(() => document.getElementById('ptName').focus(), 120);
 }
 
-function updateDirectoryRecord(name, phone, type, sessionId) {
-  const idx = db.directory.findIndex(d => d.name === name || (phone && d.phone === phone));
-  const visitDate = sessionId.startsWith('20') ? sessionId : new Date().toISOString().slice(0, 10);
-  if (idx === -1) {
-    db.directory.push({ name, phone, lastVisit: visitDate, lastType: type, visitsCount: 1 });
-  } else {
-    db.directory[idx].name = name;
-    if (phone) db.directory[idx].phone = phone;
-    db.directory[idx].lastVisit = visitDate;
-    db.directory[idx].lastType = type;
-    db.directory[idx].visitsCount = (db.directory[idx].visitsCount || 1) + 1;
-  }
-}
-
-function savePatient() {
-  const sess = getCurrentSession();
+async function savePatient() {
+  if (saving) return;
   const name = document.getElementById('ptName').value.trim();
   if (!name) return showToast('اكتب اسم المريض أولاً');
-
   const phone = document.getElementById('ptPhone').value.trim();
   const fee = Number(document.getElementById('ptFee').value) || 0;
   const note = document.getElementById('ptNote').value.trim();
-  const type = (fee === 0 && selectedType === 'consult') ? 'consult' : selectedType;
+  const row = { name, phone, type: selectedType, fee, note, pay_method: fee === 0 ? 'آجل / مجاني' : selectedPay };
 
-  if (editingId === null) {
-    const newId = sess.patients.length ? Math.max(...sess.patients.map(p => p.id)) + 1 : 1;
-    sess.patients.push({
-      id: newId, name, phone, type, fee,
-      payMethod: fee === 0 ? 'آجل / مجاني' : selectedPay,
-      note, status: 'waiting', updatedAt: Date.now()
-    });
-    updateDirectoryRecord(name, phone, type, sess.id);
-    showToast('تم تسجيل الحجز ✓');
-  } else {
-    const pt = sess.patients.find(p => p.id === editingId);
-    if (pt) {
-      if (!isAdmin && Number(pt.fee) !== fee) {
-        showToast('⛔ تعديل المبلغ متاح للمدير فقط');
-        return;
-      }
-      pt.name = name; pt.phone = phone; pt.type = type;
-      pt.fee = fee; pt.payMethod = selectedPay; pt.note = note;
-      pt.updatedAt = Date.now();
+  saving = true;
+  try {
+    if (editingId === null) {
+      const { error } = await sb.from('visits').insert({ ...row, day: db.activeDay, status: 'waiting' });
+      if (error) return fail(error);
+      showToast('تم تسجيل الحجز ✓');
+    } else {
+      const pt = db.patients.find(p => p.id === editingId);
+      if (!isAdmin && pt && Number(pt.fee) !== fee) return showToast('⛔ تعديل المبلغ متاح للمدير فقط');
+      const { data, error } = await sb.from('visits').update(row).eq('id', editingId).select('id');
+      if (error) return fail(error);
+      if (!data.length) return showToast('⛔ غير مسموح بالتعديل');
+      showToast('تم حفظ التعديل ✓');
     }
-    showToast('تم حفظ التعديل ✓');
-  }
-  saveDB();
-  closeModal('patientModal');
-  render();
+    closeModal('patientModal');
+    await refreshAll();
+  } finally { saving = false; }
 }
 
-function deletePatient() {
+async function deletePatient() {
   if (!isAdmin) return showToast('⛔ الحذف للمدير فقط');
   if (!confirm('حذف هذا المريض نهائياً من قائمة اليوم؟')) return;
-  const sess = getCurrentSession();
-  sess.patients = sess.patients.filter(p => p.id !== editingId);
-  saveDB();
+  const { data, error } = await sb.from('visits').delete().eq('id', editingId).select('id');
+  if (error) return fail(error);
+  if (!data.length) return showToast('⛔ غير مسموح بالحذف');
   closeModal('patientModal');
-  render();
+  await refreshAll();
   showToast('تم الحذف');
 }
 
-function cycleStatus(id) {
-  const sess = getCurrentSession();
-  const pt = sess.patients.find(p => p.id === id);
+async function cycleStatus(id) {
+  const pt = db.patients.find(p => p.id === id);
   if (!pt) return;
-  if (!isAdmin && pt.status === 'done') {
-    showToast('🔒 تم تأكيد الكشف — للتراجع اطلب المدير');
-    return;
-  }
+  if (!isAdmin && pt.status === 'done') return showToast('🔒 تم تأكيد الكشف — للتراجع اطلب المدير');
   const order = ['waiting', 'inside', 'done'];
-  pt.status = order[(order.indexOf(pt.status) + 1) % order.length];
-  pt.updatedAt = Date.now();
-  saveDB();
+  const next = order[(order.indexOf(pt.status) + 1) % order.length];
+  const { data, error } = await sb.from('visits').update({ status: next }).eq('id', id).select('id');
+  if (error) return fail(error);
+  if (!data.length) return showToast('⛔ غير مسموح');
+  pt.status = next; // instant feedback; realtime refresh confirms
   render();
 }
 
-/* ==================== FINISH DAY SUMMARY & EXPORT ==================== */
-function openFinishDayModal() {
+/* ==================== RENDER ==================== */
+function renderList() {
   const sess = getCurrentSession();
-  const exams = sess.patients.filter(p => p.type !== 'consult');
-  const consults = sess.patients.filter(p => p.type === 'consult');
-  const doneCount = sess.patients.filter(p => p.status === 'done').length;
-  const cashTotal = sess.patients.filter(p => (p.payMethod || 'كاش') === 'كاش').reduce((s, p) => s + (Number(p.fee) || 0), 0);
-  const instaTotal = sess.patients.filter(p => p.payMethod === 'إنستاباي').reduce((s, p) => s + (Number(p.fee) || 0), 0);
-  const grandTotal = sess.patients.reduce((s, p) => s + (Number(p.fee) || 0), 0);
+  const container = document.getElementById('patientList');
+  const statusLabels = {
+    waiting: { text: '⏳ في الانتظار', cls: '' },
+    inside: { text: '🩺 عند الدكتور', cls: 'inside' },
+    done: { text: '✓ تم الكشف', cls: 'done' }
+  };
 
-  let html = `
-    <div style="font-weight:800; font-size:14px; color:var(--primary-dark); margin-bottom:10px;">
-      🏥 ${db.clinicTitle} — 📅 ${sess.label}
+  const filtered = sess.patients.filter((p, idx) => {
+    if (searchQuery) {
+      const mName = p.name.toLowerCase().includes(searchQuery);
+      const mPhone = (p.phone || '').includes(searchQuery);
+      const mTurn = String(idx + 1) === searchQuery;
+      if (!mName && !mPhone && !mTurn) return false;
+    }
+    if (currentFilter === 'waiting') return p.status === 'waiting';
+    if (currentFilter === 'inside') return p.status === 'inside';
+    if (currentFilter === 'done') return p.status === 'done';
+    if (currentFilter === 'exam') return p.type !== 'consult';
+    if (currentFilter === 'consult') return p.type === 'consult';
+    return true;
+  });
+
+  if (!filtered.length) {
+    container.innerHTML = `<div style="text-align:center; padding:38px 16px; color:var(--muted); font-weight:600;">
+      قائمة <strong>${esc(sess.label)}</strong> فارغة حالياً<br><small>اضغط "+ حجز / تسجيل مريض" لإضافة أول حالة</small>
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(p => {
+    const turnNum = sess.patients.indexOf(p) + 1;
+    const st = statusLabels[p.status] || statusLabels.waiting;
+    const cardCls = p.status === 'inside' ? 'card status-inside' : (p.status === 'done' ? 'card status-done' : 'card');
+    const isConsult = p.type === 'consult';
+    return `
+      <div class="${cardCls}">
+        <div class="card-top">
+          <div class="patient-info" onclick="openPatientModal('${p.id}')">
+            <div class="num-badge">${turnNum}</div>
+            <div style="min-width:0;">
+              <div class="pt-name">${esc(p.name)}</div>
+              ${p.phone ? `<div class="pt-phone">${esc(p.phone)}</div>` : ''}
+            </div>
+          </div>
+          <button class="status-btn ${st.cls}" onclick="cycleStatus('${p.id}')">${st.text}</button>
+        </div>
+        <div class="meta-row">
+          <span class="badge ${isConsult ? 'badge-type-consult' : 'badge-type-exam'}">${isConsult ? 'استشارة' : 'كشف'}</span>
+          <span class="badge badge-fee">${p.fee} ج</span>
+          ${p.fee > 0 ? `<span class="badge badge-pay">${esc(p.payMethod || 'كاش')}</span>` : ''}
+          ${p.note ? `<span class="badge badge-note">📌 ${esc(p.note)}</span>` : ''}
+          ${p.phone ? `<a class="badge badge-call" href="tel:${esc(p.phone)}" onclick="event.stopPropagation()">📞</a>` : ''}
+          <span class="badge badge-edit" onclick="openPatientModal('${p.id}')">تعديل ✎</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function render() {
+  const sess = getCurrentSession();
+  document.getElementById('clinicTitleInput').value = db.clinicTitle;
+  renderDaySelector();
+  document.getElementById('stat-total').textContent = sess.patients.length;
+  document.getElementById('stat-waiting').textContent = sess.patients.filter(p => p.status === 'waiting').length;
+  document.getElementById('stat-done').textContent = sess.patients.filter(p => p.status === 'done').length;
+  document.getElementById('stat-total-fee').textContent = sess.patients.reduce((s, p) => s + (Number(p.fee) || 0), 0);
+  renderList();
+}
+
+/* ==================== START ==================== */
+(async function init() {
+  document.getElementById('clinicTitleInput').value = db.clinicTitle;
+  if (CONFIG.SUPABASE_URL.includes('YOUR-') || CONFIG.SUPABASE_ANON_KEY.includes('YOUR-')) {
+    return showLogin('⚠️ لازم تحط SUPABASE_URL و SUPABASE_ANON_KEY في أول السكربت');
+  }
+  if (typeof supabase === 'undefined') return showLogin('تعذر تحميل مكتبة Supabase — تأكد من الإنترنت');
+  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) await afterLogin(session.user); else showLogin('');
+})();
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => { t.style.display = 'none'; }, 2700);
+}
+
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function localISO(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function getNextClinicDates() {
+  const results = [];
+  const d = new Date();
+  for (let i = 0; i < 14 && results.length < 4; i++) {
+    const day = d.getDay(); // 6 = Saturday, 3 = Wednesday
+    if (day === 6 || day === 3) {
+      const dayName = day === 6 ? 'السبت' : 'الأربعاء';
+      const iso = localISO(d);
+      const label = `${dayName} ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+      results.push({ id: iso, label });
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return results;
+}
+
+function selectVisitType(type, defaultFee) {
+  selectedType = type;
+  document.getElementById('typeExamBtn').classList.toggle('active', type === 'exam' && defaultFee === 200);
+  document.getElementById('typeConsultBtn').classList.toggle('active', type === 'consult');
+  document.getElementById('typeCustomBtn').classList.toggle('active', defaultFee === '');
+  if (defaultFee !== '') {
+    document.getElementById('ptFee').value = defaultFee;
+    if (defaultFee === 0) {
+      selectPayMethod('آجل / مجاني', document.querySelector('[data-pay="آجل / مجاني"]'));
+    } else if (selectedPay === 'آجل / مجاني') {
+      selectPayMethod('كاش', document.querySelector('[data-pay="كاش"]'));
+    }
+  } else {
+    document.getElementById('ptFee').value = '';
+    document.getElementById('ptFee').focus();
+  }
+}
+
+function selectPayMethod(method, el) {
+  selectedPay = method;
+  document.querySelectorAll('.pay-pill').forEach(p => p.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
+function appendNote(txt) {
+  const inp = document.getElementById('ptNote');
+  const cur = inp.value.trim();
+  if (!cur) inp.value = txt;
+  else if (!cur.includes(txt)) inp.value = cur + ' - ' + txt;
+}
+
+function onPhoneInput() {
+  const ph = document.getElementById('ptPhone').value.trim();
+  if (ph.length >= 7) {
+    const found = db.directory.find(p => p.phone === ph);
+    if (found && !document.getElementById('ptName').value.trim()) {
+      pickDirectoryPatient(found.name, found.phone, found.lastVisit, found.lastType);
+    }
+  }
+}
+
+function onNameInput() {
+  const val = document.getElementById('ptName').value.trim().toLowerCase();
+  const box = document.getElementById('autocompleteBox');
+  if (val.length < 2) {
+    box.style.display = 'none';
+    return;
+  }
+  const matches = db.directory.filter(p => p.name.toLowerCase().includes(val) || (p.phone && p.phone.includes(val))).slice(0, 6);
+  if (!matches.length) {
+    box.style.display = 'none';
+    return;
+  }
+  acMatches = matches;
+  box.innerHTML = matches.map((m, idx) => `
+    <div class="ac-item" onclick="pickAC(${idx})">
+      <div>
+        <strong>${esc(m.name)}</strong>
+        <div style="font-size:11px; color:var(--muted);">${esc(m.phone) || 'بدون رقم'} • زيارات سابقة: ${m.visitsCount || 1}</div>
+      </div>
+      <span style="font-size:11px; color:var(--primary); font-weight:700;">اختيار ↵</span>
     </div>
-    <div class="summary-grid">
-      <div class="sum-card"><div class="val">${grandTotal} ج</div><div class="lbl">إجمالي الإيراد اليومي</div></div>
-      <div class="sum-card"><div class="val">${doneCount} / ${sess.patients.length}</div><div class="lbl">حالات تم كشفها</div></div>
-      <div class="sum-card"><div class="val" style="color:#15803d;">${cashTotal} ج</div><div class="lbl">💵 إجمالي الكاش</div></div>
-      <div class="sum-card"><div class="val" style="color:#1d4ed8;">${instaTotal} ج</div><div class="lbl">📱 إجمالي إنستاباي</div></div>
-    </div>
-    <div style="font-size:12px; font-weight:700; color:var(--muted);">
-      • عدد الكشوفات: <strong>${exams.length}</strong> | عدد الاستشارات: <strong>${consults.length}</strong>
-    </div>
-    <table class="summary-table">
-      <thead><tr><th>#</th><th>الاسم</th><th>النوع</th><th>المبلغ</th><th>الدفع</th><th>الحالة</th></tr></thead>
-      <tbody>
-        ${sess.patients.map((p, i) => `
-          <tr>
-            <td>${i + 1}</td>
-            <td>${p.name}${p.note ? ` <small style="color:#be123c">(${p.note})</small>` : ''}</td>
-            <td>${p.type === 'consult' ? 'استشارة' : 'كشف'}</td>
-            <td>${p.fee} ج</td>
-            <td>${p.payMethod || 'كاش'}</td>
-            <td>${p.status === 'done' ? '✅ تم' : (p.status === 'inside' ? '🩺 بالداخل' : '⏳ انتظار')}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
-  document.getElementById('summaryContent').innerHTML = html;
-  document.getElementById('finishModal').classList.add('open');
+  `).join('');
+  box.style.display = 'block';
+}
+
+function pickAC(i) {
+  const m = acMatches[i];
+  if (m) pickDirectoryPatient(m.name, m.phone, m.lastVisit, m.lastType);
 }
 
 function buildReportText() {
@@ -908,60 +943,118 @@ function copyTextReport() {
 function exportSessionExcel() {
   if (typeof XLSX === 'undefined') return showToast('تأكد من الاتصال بالإنترنت للتصدير');
   const sess = getCurrentSession();
-  const rows = sess.patients.map((p, i) => ({
-    'م': i + 1,
-    'اسم المريض': p.name,
-    'رقم التليفون': p.phone || '',
-    'نوع الزيارة': p.type === 'consult' ? 'استشارة' : 'كشف',
-    'المبلغ (جنيه)': Number(p.fee) || 0,
-    'طريقة الدفع': p.payMethod || 'كاش',
-    'الحالة': p.status === 'done' ? 'تم الكشف' : (p.status === 'inside' ? 'عند الدكتور' : 'في الانتظار'),
-    'ملاحظات': p.note || ''
-  }));
-  const ws = XLSX.utils.json_to_sheet(rows);
+  const statusTxt = p => p.status === 'done' ? 'تم الكشف' : (p.status === 'inside' ? 'عند الدكتور' : 'في الانتظار');
+  const num = p => Number(p.fee) || 0;
+  const exams = sess.patients.filter(p => p.type !== 'consult');
+  const consults = sess.patients.filter(p => p.type === 'consult');
+  const sum = arr => arr.reduce((t, p) => t + num(p), 0);
+  const cashTotal = sum(sess.patients.filter(p => (p.payMethod || 'كاش') === 'كاش'));
+  const instaTotal = sum(sess.patients.filter(p => p.payMethod === 'إنستاباي'));
+  const grandTotal = sum(sess.patients);
+
+  const examRows = [['م', 'اسم المريض', 'رقم التليفون', 'المبلغ (ج)', 'طريقة الدفع', 'الحالة', 'ملاحظات']];
+  exams.forEach((p, i) => examRows.push([i + 1, p.name, p.phone || '', num(p), p.payMethod || 'كاش', statusTxt(p), p.note || '']));
+  examRows.push(['', 'الإجمالي', '', sum(exams), '', '', '']);
+
+  const consultRows = [['م', 'اسم المريض', 'رقم التليفون', 'المبلغ (ج)', 'الحالة', 'ملاحظات']];
+  consults.forEach((p, i) => consultRows.push([i + 1, p.name, p.phone || '', num(p), statusTxt(p), p.note || '']));
+
+  const summaryRows = [
+    ['ملخص اليوم', ''],
+    ['العيادة', db.clinicTitle],
+    ['اليوم', sess.label],
+    ['', ''],
+    ['عدد الكشوفات', exams.length],
+    ['عدد الاستشارات', consults.length],
+    ['إجمالي الحالات', sess.patients.length],
+    ['حالات تم كشفها', sess.patients.filter(p => p.status === 'done').length],
+    ['', ''],
+    ['إجمالي الكاش (ج)', cashTotal],
+    ['إجمالي إنستاباي (ج)', instaTotal],
+    ['آجل / مجاني (ج)', grandTotal - cashTotal - instaTotal],
+    ['إجمالي الإيراد (ج)', grandTotal]
+  ];
+
+  const mk = (rows, widths) => {
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = widths.map(w => ({ wch: w }));
+    return ws;
+  };
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'تقرير العيادة');
-  XLSX.writeFile(wb, `عيادة_${sess.label.replace(/\//g, '-')}.xlsx`);
+  wb.Workbook = { Views: [{ RTL: true }] };
+  XLSX.utils.book_append_sheet(wb, mk(examRows, [5, 24, 16, 12, 14, 14, 24]), 'الكشوفات');
+  XLSX.utils.book_append_sheet(wb, mk(consultRows, [5, 24, 16, 12, 14, 24]), 'الاستشارات');
+  XLSX.utils.book_append_sheet(wb, mk(summaryRows, [24, 26]), 'الملخص');
+  XLSX.writeFile(wb, `عيادة_${sess.label.replace(/[\/\\:*?"<>|]/g, '-')}.xlsx`);
   showToast('تم تحميل ملف الإكسيل ✓');
 }
 
-/* ==================== SYNC & DIRECTORY ==================== */
-function openSyncModal() {
-  document.getElementById('pasteSyncInput').value = '';
-  document.getElementById('syncModal').classList.add('open');
-}
-function copySyncCode() {
+function openFinishDayModal() {
   const sess = getCurrentSession();
-  const payload = { sessionId: sess.id, label: sess.label, patients: sess.patients };
-  const code = 'CLINIC_V2:' + btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-  navigator.clipboard.writeText(code).then(() => showToast('تم نسخ كود المزامنة ✓'));
+  const exams = sess.patients.filter(p => p.type !== 'consult');
+  const consults = sess.patients.filter(p => p.type === 'consult');
+  const doneCount = sess.patients.filter(p => p.status === 'done').length;
+  const cashTotal = sess.patients.filter(p => (p.payMethod || 'كاش') === 'كاش').reduce((s, p) => s + (Number(p.fee) || 0), 0);
+  const instaTotal = sess.patients.filter(p => p.payMethod === 'إنستاباي').reduce((s, p) => s + (Number(p.fee) || 0), 0);
+  const grandTotal = sess.patients.reduce((s, p) => s + (Number(p.fee) || 0), 0);
+  const otherTotal = grandTotal - cashTotal - instaTotal;
+
+  let html = `
+    <div style="font-weight:800; font-size:14px; color:var(--primary-dark); margin-bottom:10px;">
+      🏥 ${esc(db.clinicTitle)} — 📅 ${esc(sess.label)}
+    </div>
+    <div class="summary-grid">
+      <div class="sum-card"><div class="val">${grandTotal} ج</div><div class="lbl">إجمالي الإيراد اليومي</div></div>
+      <div class="sum-card"><div class="val">${doneCount} / ${sess.patients.length}</div><div class="lbl">حالات تم كشفها</div></div>
+      <div class="sum-card"><div class="val" style="color:#15803d;">${cashTotal} ج</div><div class="lbl">💵 إجمالي الكاش</div></div>
+      <div class="sum-card"><div class="val" style="color:#1d4ed8;">${instaTotal} ج</div><div class="lbl">📱 إجمالي إنستاباي</div></div>
+    </div>
+    <div class="summary-grid">
+      <div class="sum-card"><div class="val">${exams.length} / ${consults.length}</div><div class="lbl">🩺 كشوفات / استشارات</div></div>
+      <div class="sum-card"><div class="val" style="color:#854d0e;">${otherTotal} ج</div><div class="lbl">🆓 آجل / مجاني</div></div>
+    </div>
+    <table class="summary-table">
+      <thead><tr><th>#</th><th>الاسم</th><th>النوع</th><th>المبلغ</th><th>الدفع</th><th>الحالة</th></tr></thead>
+      <tbody>
+        ${sess.patients.map((p, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${esc(p.name)}${p.note ? ` <small style="color:#be123c">(${esc(p.note)})</small>` : ''}</td>
+            <td>${p.type === 'consult' ? 'استشارة' : 'كشف'}</td>
+            <td>${p.fee} ج</td>
+            <td>${esc(p.payMethod || 'كاش')}</td>
+            <td>${p.status === 'done' ? '✅ تم' : (p.status === 'inside' ? '🩺 بالداخل' : '⏳ انتظار')}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+  document.getElementById('summaryContent').innerHTML = html;
+  document.getElementById('finishModal').classList.add('open');
 }
-function mergeSyncCode() {
-  const raw = document.getElementById('pasteSyncInput').value.trim();
-  const idx = raw.indexOf('CLINIC_V2:');
-  if (idx === -1) return showToast('كود غير صحيح');
-  try {
-    const data = JSON.parse(decodeURIComponent(escape(atob(raw.slice(idx + 10).trim()))));
-    if (!db.sessions[data.sessionId]) {
-      db.sessions[data.sessionId] = { id: data.sessionId, label: data.label, patients: [] };
-    }
-    const target = db.sessions[data.sessionId];
-    let merged = 0;
-    data.patients.forEach(inc => {
-      const ex = target.patients.find(p => p.name === inc.name && (p.phone === inc.phone || !p.phone || !inc.phone));
-      if (!ex) {
-        const nid = target.patients.length ? Math.max(...target.patients.map(p => p.id)) + 1 : 1;
-        target.patients.push({ ...inc, id: nid });
-        merged++;
-      } else if ((inc.updatedAt || 0) > (ex.updatedAt || 0)) {
-        Object.assign(ex, { ...inc, id: ex.id });
-        merged++;
-      }
-    });
-    db.activeSessionId = data.sessionId;
-    saveDB(); closeModal('syncModal'); render();
-    showToast(`تم دمج ${merged} حالة ✓`);
-  } catch (e) { showToast('خطأ في قراءة الكود'); }
+
+function renderDirectory() {
+  const q = document.getElementById('dirSearch').value.trim().toLowerCase();
+  const list = db.directory.map((d, i) => ({ d, i }))
+    .filter(({ d }) => d.name.toLowerCase().includes(q) || (d.phone && d.phone.includes(q)));
+  document.getElementById('dirCount').textContent = db.directory.length;
+  document.getElementById('directoryList').innerHTML = list.map(({ d, i }) => `
+    <div style="padding:9px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-weight:700; font-size:14px;">${esc(d.name)}</div>
+        <div style="font-size:11.5px; color:var(--muted);">${esc(d.phone) || 'بدون رقم'} • آخر زيارة: ${esc(d.lastVisit) || '-'}</div>
+      </div>
+      <button class="q-pill" style="background:var(--primary-light); color:var(--primary);" onclick="bookFromDirectory(${i})">+ حجز</button>
+    </div>
+  `).join('');
+}
+
+function bookFromDirectory(i) {
+  const d = db.directory[i];
+  if (!d) return;
+  closeModal('directoryModal');
+  openPatientModal(null);
+  pickDirectoryPatient(d.name, d.phone || '', d.lastVisit || '', d.lastType || 'exam');
 }
 
 function openDirectoryModal() {
@@ -969,122 +1062,32 @@ function openDirectoryModal() {
   renderDirectory();
   document.getElementById('directoryModal').classList.add('open');
 }
-function renderDirectory() {
-  const q = document.getElementById('dirSearch').value.trim().toLowerCase();
-  const list = db.directory.filter(d => d.name.toLowerCase().includes(q) || (d.phone && d.phone.includes(q)));
-  document.getElementById('dirCount').textContent = db.directory.length;
-  document.getElementById('directoryList').innerHTML = list.map(d => `
-    <div style="padding:9px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <div style="font-weight:700; font-size:14px;">${d.name}</div>
-        <div style="font-size:11.5px; color:var(--muted);">${d.phone || 'بدون رقم'} • آخر زيارة: ${d.lastVisit || '-'}</div>
-      </div>
-      <button class="q-pill" style="background:var(--primary-light); color:var(--primary);" onclick="bookFromDirectory('${d.name.replace(/'/g, "\\'")}', '${d.phone || ''}', '${d.lastVisit || ''}', '${d.lastType || 'exam'}')">+ حجز</button>
-    </div>
-  `).join('');
-}
-function bookFromDirectory(name, phone, lastVisit, lastType) {
-  closeModal('directoryModal');
-  openPatientModal(null);
-  pickDirectoryPatient(name, phone, lastVisit, lastType);
-}
 
-/* ==================== SEARCH, FILTER & RENDER ==================== */
 function handleSearch() {
   searchQuery = document.getElementById('searchInput').value.trim().toLowerCase();
   document.getElementById('clearSearchBtn').style.display = searchQuery ? 'block' : 'none';
   renderList();
 }
+
 function clearSearch() {
   document.getElementById('searchInput').value = '';
   searchQuery = '';
   document.getElementById('clearSearchBtn').style.display = 'none';
   renderList();
 }
+
 function setFilter(f, el) {
   currentFilter = f;
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
   renderList();
 }
+
 function openToolsModal() { updateRoleUI(); document.getElementById('toolsModal').classList.add('open'); }
+
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
 function closeModalOnBg(e, id) { if (e.target.id === id) closeModal(id); }
-
-function renderList() {
-  const sess = getCurrentSession();
-  const container = document.getElementById('patientList');
-  const statusLabels = {
-    waiting: { text: '⏳ في الانتظار', cls: '' },
-    inside: { text: '🩺 عند الدكتور', cls: 'inside' },
-    done: { text: '✓ تم الكشف', cls: 'done' }
-  };
-
-  const filtered = sess.patients.filter((p, idx) => {
-    if (searchQuery) {
-      const mName = p.name.toLowerCase().includes(searchQuery);
-      const mPhone = (p.phone || '').includes(searchQuery);
-      const mTurn = String(idx + 1) === searchQuery;
-      if (!mName && !mPhone && !mTurn) return false;
-    }
-    if (currentFilter === 'waiting') return p.status === 'waiting';
-    if (currentFilter === 'inside') return p.status === 'inside';
-    if (currentFilter === 'done') return p.status === 'done';
-    if (currentFilter === 'exam') return p.type !== 'consult';
-    if (currentFilter === 'consult') return p.type === 'consult';
-    return true;
-  });
-
-  if (!filtered.length) {
-    container.innerHTML = `<div style="text-align:center; padding:38px 16px; color:var(--muted); font-weight:600;">
-      قائمة <strong>${sess.label}</strong> فارغة حالياً<br><small>اضغط "+ حجز / تسجيل مريض" لإضافة أول حالة</small>
-    </div>`;
-    return;
-  }
-
-  container.innerHTML = filtered.map(p => {
-    const turnNum = sess.patients.indexOf(p) + 1;
-    const st = statusLabels[p.status] || statusLabels.waiting;
-    const cardCls = p.status === 'inside' ? 'card status-inside' : (p.status === 'done' ? 'card status-done' : 'card');
-    const isConsult = p.type === 'consult';
-    return `
-      <div class="${cardCls}">
-        <div class="card-top">
-          <div class="patient-info" onclick="openPatientModal(${p.id})">
-            <div class="num-badge">${turnNum}</div>
-            <div style="min-width:0;">
-              <div class="pt-name">${p.name}</div>
-              ${p.phone ? `<div class="pt-phone">${p.phone}</div>` : ''}
-            </div>
-          </div>
-          <button class="status-btn ${st.cls}" onclick="cycleStatus(${p.id})">${st.text}</button>
-        </div>
-        <div class="meta-row">
-          <span class="badge ${isConsult ? 'badge-type-consult' : 'badge-type-exam'}">${isConsult ? 'استشارة' : 'كشف'}</span>
-          <span class="badge badge-fee">${p.fee} ج</span>
-          ${p.fee > 0 ? `<span class="badge badge-pay">${p.payMethod || 'كاش'}</span>` : ''}
-          ${p.note ? `<span class="badge badge-note">📌 ${p.note}</span>` : ''}
-          ${p.phone ? `<a class="badge badge-call" href="tel:${p.phone}" onclick="event.stopPropagation()">📞</a>` : ''}
-          <span class="badge badge-edit" onclick="openPatientModal(${p.id})">تعديل ✎</span>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function render() {
-  const sess = getCurrentSession();
-  document.getElementById('clinicTitleInput').value = db.clinicTitle;
-  renderDaySelector();
-  document.getElementById('stat-total').textContent = sess.patients.length;
-  document.getElementById('stat-waiting').textContent = sess.patients.filter(p => p.status === 'waiting').length;
-  document.getElementById('stat-done').textContent = sess.patients.filter(p => p.status === 'done').length;
-  document.getElementById('stat-total-fee').textContent = sess.patients.reduce((s, p) => s + (Number(p.fee) || 0), 0);
-  renderList();
-}
-
-updateRoleUI();
-render();
 </script>
 </body>
 </html>
