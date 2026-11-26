@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>إدارة عيادة الرياض - الحجوزات والدور</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.75.0/dist/umd/supabase.min.js"></script>
   <style>
     :root {
       --bg: #f1f5f9;
@@ -433,7 +433,7 @@ function fail(e) {
   const msg = (e && e.message) || '';
   if (msg.includes('LOCKED')) showToast('⛔ غير مسموح — للمدير فقط');
   else if (msg.includes('row-level security')) showToast('⛔ ليس لديك صلاحية');
-  else showToast('تعذر الاتصال بالسيرفر');
+  else showToast('خطأ: ' + (msg || 'تعذر الاتصال بالسيرفر').slice(0, 90) + (e && e.code ? ' [' + e.code + ']' : ''));
 }
 function mapVisit(r) {
   return { id: r.id, name: r.name, phone: r.phone || '', type: r.type, fee: r.fee,
@@ -457,7 +457,10 @@ async function doLogin() {
   if (!email || !password) return showLogin('اكتب الإيميل وكلمة السر');
   document.getElementById('loginMsg').textContent = 'جاري الدخول...';
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) return showLogin('الإيميل أو كلمة السر غير صحيحة');
+  if (error) {
+    const bad = /invalid login|invalid credentials/i.test(error.message || '');
+    return showLogin(bad ? 'الإيميل أو كلمة السر غير صحيحة' : 'خطأ في الدخول: ' + (error.message || '') + ' (' + (error.status || error.code || '') + ')');
+  }
   await afterLogin(data.user);
 }
 
@@ -471,7 +474,7 @@ async function doLogout() {
 
 async function afterLogin(user) {
   const { data: prof, error } = await sb.from('profiles').select('role, full_name').eq('id', user.id).maybeSingle();
-  if (error) { showLogin('تعذر الاتصال بالسيرفر'); return; }
+  if (error) { showLogin('خطأ في قراءة الصلاحيات: ' + (error.message || '') + ' [' + (error.code || '') + ']'); return; }
   if (!prof) {
     await sb.auth.signOut();
     return showLogin('الحساب غير مفعّل — اطلب من المدير تفعيله');
