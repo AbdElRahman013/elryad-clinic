@@ -2,231 +2,146 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>إدارة عيادة الرياض - الحجوزات والدور</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <title>حجوزات عيادة د. حازم عبد الحميد</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.75.0/dist/umd/supabase.min.js"></script>
   <style>
     :root {
-      --bg: #f1f5f9;
-      --card: #ffffff;
-      --primary: #0f766e;
-      --primary-dark: #115e59;
-      --primary-light: #f0fdfa;
-      --blue: #1d4ed8;
-      --green: #16a34a;
-      --amber: #d97706;
-      --amber-bg: #fef3c7;
-      --purple: #7c3aed;
-      --red: #dc2626;
-      --text: #0f172a;
-      --muted: #64748b;
-      --border: #e2e8f0;
+      --bg: #eef1f5; --card: #fff; --ink: #10263b; --primary: #0f6e7a; --primary-dark: #0b525b; --primary-light: #e6f2f3;
+      --blue: #1f5fbf; --green: #1e8a55; --amber: #a86400; --amber-bg: #fdf3dc; --red: #c0392b;
+      --text: #14212e; --muted: #62707f; --border: #dde3ea; --pad: max(14px, calc((100vw - 760px) / 2));
     }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Tahoma, sans-serif; }
-    body { margin: 0; background: var(--bg); color: var(--text); padding-bottom: 88px; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, system-ui, sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); padding-bottom: 92px; font-size: 15px; line-height: 1.5; }
+    button, input, select { font: inherit; }
+    :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-    /* Topbar */
-    .topbar {
-      background: var(--primary);
-      color: #fff;
-      padding: 11px 14px;
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-    }
-    .topbar.admin-mode { background: #1e293b; }
-    .topbar-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .clinic-title {
-      background: transparent; border: none; color: #fff;
-      font-size: 16px; font-weight: 800; padding: 0; width: 100%; outline: none;
-    }
-    .role-badge {
-      display: inline-block; font-size: 10.5px; font-weight: 700;
-      padding: 2px 8px; border-radius: 12px; margin-top: 3px;
-      background: rgba(255,255,255,0.2); cursor: pointer;
-    }
-    .admin-mode .role-badge { background: #f59e0b; color: #0f172a; }
-    .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-    .icon-btn {
-      background: rgba(255,255,255,0.18); color: #fff;
-      border: 1px solid rgba(255,255,255,0.35); border-radius: 8px;
-      padding: 6px 9px; font-size: 12px; font-weight: 700; cursor: pointer;
-    }
+    .topbar { background: var(--ink); color: #fff; padding: 12px var(--pad); position: sticky; top: 0; z-index: 50; }
+    .topbar.admin-mode { background: #1b1f3b; }
+    .topbar-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .clinic-title { background: transparent; border: none; color: #fff; font-size: 18px; font-weight: 700; padding: 0; width: 100%; outline: none; }
+    .role-badge { display: inline-block; font-size: 12px; font-weight: 500; color: #b9c7d6; margin-top: 1px; cursor: pointer; }
+    .admin-mode .role-badge { color: #f0c36a; }
+    .header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .icon-btn { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.3); border-radius: 8px; padding: 6px 11px; font-size: 13px; font-weight: 500; cursor: pointer; }
+    .icon-btn.conn { border-color: transparent; padding-inline: 0; cursor: default; display: inline-flex; align-items: center; gap: 6px; color: #b9c7d6; font-size: 12px; }
+    .icon-btn.conn::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #3ecf8e; }
+    .icon-btn.conn.off::before { background: #e5604f; }
 
-    /* Day Selector Bar */
-    .day-bar {
-      background: #fff; padding: 8px 12px; border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    }
-    .day-select-wrap { display: flex; align-items: center; gap: 6px; flex: 1; }
-    .day-select {
-      padding: 6px 10px; border-radius: 8px; border: 1.5px solid var(--primary);
-      font-weight: 800; font-size: 13px; color: var(--primary-dark); background: var(--primary-light);
-      flex: 1; max-width: 230px; outline: none;
-    }
-    .new-day-btn {
-      background: #f1f5f9; border: 1px solid #cbd5e1; color: var(--text);
-      border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
-    }
+    .day-bar { background: #fff; padding: 10px var(--pad); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .day-select-wrap { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .day-lbl { font-size: 13px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+    .day-select { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); font-weight: 600; font-size: 14px; color: var(--ink); background: #fff; flex: 1; max-width: 280px; }
+    .new-day-btn { background: #fff; border: 1px solid var(--border); color: var(--ink); border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 
-    /* Stats Bar */
-    .stats-bar {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 10px 12px 4px;
-    }
-    .stat-box {
-      background: var(--card); border-radius: 10px; padding: 8px 4px;
-      text-align: center; border: 1px solid var(--border);
-    }
-    .stat-num { font-size: 16px; font-weight: 800; }
-    .stat-lbl { font-size: 10px; color: var(--muted); font-weight: 700; margin-top: 1px; }
+    .stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 14px var(--pad) 6px; }
+    .stat-box { background: var(--card); border-radius: 10px; padding: 10px 6px; text-align: center; border: 1px solid var(--border); }
+    .stat-num { font-size: 22px; font-weight: 700; line-height: 1.2; }
+    .stat-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-    /* Controls */
-    .controls { padding: 8px 12px; position: sticky; top: 58px; background: var(--bg); z-index: 40; }
+    .controls { padding: 8px var(--pad); position: sticky; top: 74px; background: var(--bg); z-index: 40; }
     .search-wrap { position: relative; }
-    .search-input {
-      width: 100%; padding: 10px 36px 10px 12px; border-radius: 10px;
-      border: 1px solid #cbd5e1; font-size: 14px; background: #fff; outline: none;
-    }
-    .clear-search {
-      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-      background: #e2e8f0; border: none; border-radius: 50%; width: 22px; height: 22px;
-      font-size: 12px; cursor: pointer; display: none;
-    }
-    .filters { display: flex; gap: 6px; overflow-x: auto; padding-top: 8px; scrollbar-width: none; }
+    .search-input { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border); font-size: 14px; background: #fff; outline: none; }
+    .search-input:focus { border-color: var(--primary); }
+    .clear-search { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); background: #e6ebf0; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 11px; cursor: pointer; display: none; }
+    .filters { display: flex; gap: 6px; overflow-x: auto; padding-top: 9px; scrollbar-width: none; }
     .filters::-webkit-scrollbar { display: none; }
-    .chip {
-      padding: 6px 11px; border-radius: 20px; border: 1px solid var(--border);
-      background: #fff; color: var(--text); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer;
-    }
-    .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .chip { padding: 6px 13px; border-radius: 8px; border: 1px solid var(--border); background: #fff; color: var(--text); font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+    .chip.active { background: var(--ink); color: #fff; border-color: var(--ink); }
 
-    /* Patient Cards */
-    .list { padding: 4px 12px; display: flex; flex-direction: column; gap: 9px; }
-    .card {
-      background: var(--card); border-radius: 14px; padding: 12px;
-      border: 1.5px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    }
-    .card.status-inside { border-color: #60a5fa; background: #f8fbff; }
-    .card.status-done { border-color: #86efac; background: #f9fefb; opacity: 0.92; }
-    .card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .patient-info { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; cursor: pointer; }
-    .num-badge {
-      background: var(--primary-light); color: var(--primary); font-weight: 800; font-size: 13px;
-      min-width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center;
-      justify-content: center; flex-shrink: 0; border: 1px solid #ccfbf1;
-    }
-    .pt-name { font-size: 15.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .pt-phone { font-size: 12px; color: var(--muted); direction: ltr; text-align: right; margin-top: 2px; }
-
-    .status-btn {
-      padding: 7px 11px; border-radius: 10px; border: 1.5px solid #fde68a;
-      background: var(--amber-bg); color: var(--amber); font-weight: 800; font-size: 12px; cursor: pointer; flex-shrink: 0;
-    }
+    .list { padding: 6px var(--pad); display: flex; flex-direction: column; gap: 8px; }
+    .card { background: var(--card); border-radius: 12px; padding: 12px 14px; border: 1px solid var(--border); border-inline-start: 4px solid #c9d2dc; }
+    .card.status-inside { border-inline-start-color: var(--blue); background: #f7faff; }
+    .card.status-done { border-inline-start-color: var(--green); }
+    .card.status-done .pt-name { color: var(--muted); }
+    .card-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .patient-info { display: flex; align-items: center; gap: 11px; flex: 1; min-width: 0; cursor: pointer; }
+    .num-badge { color: var(--muted); font-weight: 600; font-size: 14px; min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; }
+    .pt-name { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pt-phone { font-size: 13px; color: var(--muted); direction: ltr; text-align: right; }
+    .status-btn { padding: 7px 13px; border-radius: 8px; border: 1px solid #ecd9a4; background: var(--amber-bg); color: var(--amber); font-weight: 600; font-size: 13px; cursor: pointer; flex-shrink: 0; min-width: 104px; }
     .status-btn.inside { background: var(--blue); border-color: var(--blue); color: #fff; }
-    .status-btn.done { background: var(--green); border-color: var(--green); color: #fff; }
+    .status-btn.done { background: #e7f4ec; border-color: #bfe0cc; color: var(--green); }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; padding-top: 9px; border-top: 1px solid #edf0f4; align-items: center; }
+    .badge { font-size: 12.5px; font-weight: 500; padding: 2px 9px; border-radius: 6px; display: inline-flex; align-items: center; background: #f1f4f7; color: #3b4856; }
+    .badge-type-exam { background: var(--primary-light); color: var(--primary-dark); }
+    .badge-type-consult { background: #efeafb; color: #5b3fa8; }
+    .badge-fee { font-weight: 600; }
+    .badge-note { background: #fdecea; color: #9b2c20; }
+    .badge-call { background: #e8f0fb; color: var(--blue); text-decoration: none; }
+    .badge-call::before { content: 'اتصال'; }
+    .badge-call { font-size: 12.5px; }
+    .badge-edit { margin-inline-start: auto; background: transparent; color: var(--primary); cursor: pointer; font-weight: 600; }
 
-    .meta-row {
-      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px;
-      padding-top: 8px; border-top: 1px dashed var(--border); align-items: center;
-    }
-    .badge { font-size: 11.5px; font-weight: 700; padding: 3px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; }
-    .badge-type-exam { background: #ecfdf5; color: #047857; }
-    .badge-type-consult { background: #f3e8ff; color: #7e22ce; }
-    .badge-fee { background: #f8fafc; color: #334155; border: 1px solid var(--border); }
-    .badge-pay { background: #fefce8; color: #854d0e; border: 1px solid #fef08a; }
-    .badge-note { background: #fff1f2; color: #be123c; }
-    .badge-call { background: #eff6ff; color: #1d4ed8; text-decoration: none; }
-    .badge-edit { background: #f1f5f9; color: var(--muted); margin-right: auto; cursor: pointer; }
+    .bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid var(--border); padding: 10px var(--pad) calc(10px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: 1.3fr 1fr auto; gap: 8px; z-index: 60; }
+    .btn-add { background: var(--primary); color: #fff; border: none; border-radius: 10px; padding: 13px 10px; font-weight: 700; font-size: 15px; cursor: pointer; }
+    .btn-finish { background: #fff; color: var(--ink); border: 1px solid var(--ink); border-radius: 10px; padding: 13px 8px; font-weight: 600; font-size: 14px; cursor: pointer; }
+    .btn-menu { background: #fff; color: var(--ink); border: 1px solid var(--border); border-radius: 10px; padding: 0 16px; font-size: 18px; cursor: pointer; }
 
-    /* Bottom Bar */
-    .bottom-bar {
-      position: fixed; bottom: 0; left: 0; right: 0; background: #fff;
-      border-top: 1px solid var(--border); padding: 10px 12px;
-      display: grid; grid-template-columns: 1.35fr 1fr auto; gap: 8px; z-index: 60;
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.06);
-    }
-    .btn-add { background: var(--primary); color: #fff; border: none; border-radius: 10px; padding: 12px 10px; font-weight: 800; font-size: 14px; cursor: pointer; }
-    .btn-finish { background: #1e293b; color: #fff; border: none; border-radius: 10px; padding: 12px 8px; font-weight: 800; font-size: 13px; cursor: pointer; }
-    .btn-menu { background: #f1f5f9; color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 0 14px; font-weight: 800; font-size: 18px; cursor: pointer; }
-
-    /* Modals */
-    .modal-backdrop {
-      position: fixed; inset: 0; background: rgba(15,23,42,0.58);
-      display: none; align-items: flex-end; justify-content: center; z-index: 100;
-    }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(16,38,59,.55); display: none; align-items: flex-end; justify-content: center; z-index: 100; }
     .modal-backdrop.open { display: flex; }
-    .modal {
-      background: #fff; width: 100%; max-width: 520px;
-      border-radius: 18px 18px 0 0; padding: 18px 16px 26px;
-      max-height: 92vh; overflow-y: auto;
-    }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-    .modal-title { font-size: 16px; font-weight: 800; margin: 0; }
-    .close-btn { background: #f1f5f9; border: none; border-radius: 8px; padding: 6px 10px; font-weight: 700; cursor: pointer; }
-    .field-group { margin-bottom: 12px; position: relative; }
-    .field-label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 5px; }
-    .field-input, .sync-textarea {
-      width: 100%; padding: 10px 11px; border: 1px solid #cbd5e1; border-radius: 9px; font-size: 15px; outline: none;
-    }
-    .sync-textarea { font-family: monospace; font-size: 11px; direction: ltr; height: 75px; resize: none; background: #f8fafc; }
+    .modal { background: #fff; width: 100%; max-width: 500px; border-radius: 16px 16px 0 0; padding: 18px 18px 26px; max-height: 92vh; overflow-y: auto; }
+    @media (min-width: 640px) { .modal-backdrop { align-items: center; } .modal { border-radius: 14px; max-height: 88vh; } }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; }
+    .modal-title { font-size: 17px; font-weight: 700; margin: 0; }
+    .modal-note { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+    .close-btn { background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; flex-shrink: 0; }
+    .field-group { margin-bottom: 14px; position: relative; }
+    .field-label { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
+    .field-input { width: 100%; padding: 10px 12px; border: 1px solid #c8d1da; border-radius: 9px; font-size: 15px; outline: none; background: #fff; }
+    .field-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,110,122,.12); }
 
-    /* Autocomplete Dropdown */
-    .autocomplete-box {
-      background: #fff; border: 1.5px solid var(--primary); border-radius: 10px;
-      margin-top: 4px; max-height: 150px; overflow-y: auto; display: none;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .ac-item {
-      padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer;
-      display: flex; justify-content: space-between; align-items: center; font-size: 13px;
-    }
+    .autocomplete-box { background: #fff; border: 1px solid var(--primary); border-radius: 10px; margin-top: 4px; max-height: 170px; overflow-y: auto; display: none; box-shadow: 0 6px 16px rgba(16,38,59,.12); }
+    .ac-item { padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
     .ac-item:last-child { border-bottom: none; }
     .ac-item:hover { background: var(--primary-light); }
-    .history-banner {
-      background: #f3e8ff; color: #6b21a8; padding: 8px 10px; border-radius: 8px;
-      font-size: 12px; font-weight: 700; margin-bottom: 10px; display: none;
-    }
+    .history-banner { background: var(--primary-light); color: var(--primary-dark); padding: 9px 11px; border-radius: 8px; font-size: 13px; font-weight: 500; margin-bottom: 12px; display: none; }
 
     .quick-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-    .q-pill {
-      padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border);
-      background: #f8fafc; font-size: 12px; font-weight: 700; cursor: pointer;
-    }
+    .q-pill { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: #fff; font-size: 13px; font-weight: 500; cursor: pointer; }
     .q-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
-    .btn-save { width: 100%; background: var(--primary); color: #fff; border: none; padding: 12px; border-radius: 10px; font-weight: 800; font-size: 15px; cursor: pointer; margin-top: 4px; }
-    .btn-danger { width: 100%; background: #fee2e2; color: var(--red); border: 1px solid #fecaca; padding: 10px; border-radius: 10px; font-weight: 700; font-size: 13px; cursor: pointer; margin-top: 8px; }
+    .btn-save { width: 100%; background: var(--primary); color: #fff; border: none; padding: 13px; border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer; margin-top: 4px; }
+    .btn-outline { width: 100%; background: #fff; color: var(--ink); border: 1px solid #c8d1da; padding: 12px; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; }
+    .btn-danger { width: 100%; background: #fff; color: var(--red); border: 1px solid #efc4be; padding: 11px; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 8px; }
 
-    /* Summary Report Box */
+    .day-list { display: flex; flex-direction: column; gap: 6px; }
+    .day-row { display: flex; justify-content: space-between; align-items: center; width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 15px; font-weight: 600; cursor: pointer; color: var(--text); }
+    .day-row small { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+    .day-row.current { border-color: var(--primary); background: var(--primary-light); }
+
     .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-    .sum-card { background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
-    .sum-card .val { font-size: 18px; font-weight: 800; color: var(--primary-dark); }
-    .sum-card .lbl { font-size: 11px; color: var(--muted); font-weight: 700; }
-    .summary-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 10px 0; }
-    .summary-table th, .summary-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: right; }
-    .summary-table th { background: #f1f5f9; font-weight: 800; }
+    .sum-card { background: #f6f8fa; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+    .sum-card .val { font-size: 20px; font-weight: 700; color: var(--ink); }
+    .sum-card .lbl { font-size: 12.5px; color: var(--muted); }
+    .summary-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0; }
+    .summary-table th, .summary-table td { border-bottom: 1px solid var(--border); padding: 7px 6px; text-align: right; }
+    .summary-table th { color: var(--muted); font-weight: 600; }
 
-    .toast {
-      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-      background: #0f172a; color: #fff; padding: 9px 16px; border-radius: 20px;
-      font-size: 13px; font-weight: 600; z-index: 200; display: none;
-    }
+    #loginOverlay { position: fixed; inset: 0; background: var(--ink); z-index: 300; display: flex; align-items: center; justify-content: center; padding: 18px; }
+    .login-card { background: #fff; width: 100%; max-width: 380px; border-radius: 14px; padding: 26px 22px; }
+    .login-title { margin: 0 0 4px; font-size: 21px; font-weight: 700; color: var(--ink); }
+    .login-sub { margin: 0 0 20px; font-size: 13.5px; color: var(--muted); }
+    .login-msg { margin-top: 12px; font-size: 13px; font-weight: 500; color: var(--red); min-height: 18px; }
+
+    .toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; z-index: 400; display: none; max-width: 90vw; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
   </style>
 </head>
 <body>
 
-<div id="loginOverlay" style="position:fixed; inset:0; background:var(--bg); z-index:300; display:flex; align-items:center; justify-content:center; padding:18px;">
-  <div style="background:#fff; width:100%; max-width:380px; border-radius:16px; padding:22px 18px; box-shadow:0 8px 30px rgba(0,0,0,0.12);">
-    <h2 style="margin:0 0 4px; font-size:18px; color:var(--primary-dark);">🏥 دخول الموظفين</h2>
-    <p style="margin:0 0 14px; font-size:12.5px; color:var(--muted);">سجّل دخولك بالحساب اللي المدير عمله لك.</p>
+<div id="loginOverlay">
+  <div class="login-card">
+    <h2 class="login-title">تسجيل الدخول</h2>
+    <p class="login-sub">عيادة د. حازم عبد الحميد — دخول الموظفين</p>
     <div class="field-group"><label class="field-label">الإيميل</label>
       <input type="email" class="field-input" id="loginEmail" autocomplete="username" style="direction:ltr; text-align:right;" /></div>
     <div class="field-group"><label class="field-label">كلمة السر</label>
       <input type="password" class="field-input" id="loginPass" autocomplete="current-password" style="direction:ltr; text-align:right;" onkeydown="if(event.key==='Enter')doLogin()" /></div>
     <button class="btn-save" onclick="doLogin()">دخول</button>
-    <div id="loginMsg" style="margin-top:10px; font-size:12.5px; font-weight:700; color:var(--red); min-height:16px;"></div>
-    <div style="margin-top:12px; font-size:11px; color:var(--muted); text-align:center; direction:ltr;">build v3 · supabase-js 2.75.0</div>
+    <div id="loginMsg" class="login-msg"></div>
   </div>
 </div>
 
@@ -239,8 +154,8 @@
       <div class="role-badge" id="roleBadge" onclick="doLogout()">...</div>
     </div>
     <div class="header-actions">
-      <span class="icon-btn" id="connDot" style="cursor:default;">⏳</span>
-      <button class="icon-btn" onclick="openDirectoryModal()">📒 السجل</button>
+      <span class="icon-btn conn" id="connDot">جاري الاتصال</span>
+      <button class="icon-btn" onclick="openDirectoryModal()">سجل المرضى</button>
     </div>
   </div>
 </div>
@@ -248,10 +163,10 @@
 <!-- Clinic Day Selector (Saturday / Wednesday) -->
 <div class="day-bar">
   <div class="day-select-wrap">
-    <span style="font-size:12px; font-weight:800; color:var(--muted);">📅 يوم العيادة:</span>
+    <span class="day-lbl">يوم العيادة</span>
     <select class="day-select" id="daySelector" onchange="switchSession(this.value)"></select>
   </div>
-  <button class="new-day-btn" onclick="openNewSessionModal()">+ يوم جديد</button>
+  <button class="new-day-btn" onclick="openNewSessionModal()">يوم آخر</button>
 </div>
 
 <div class="stats-bar">
@@ -263,14 +178,14 @@
 
 <div class="controls">
   <div class="search-wrap">
-    <input type="text" class="search-input" id="searchInput" placeholder="ابحث بالاسم، رقم الدور، أو الموبايل..." oninput="handleSearch()" />
+    <input type="text" class="search-input" id="searchInput" placeholder="ابحث بالاسم أو رقم الدور أو الموبايل" oninput="handleSearch()" />
     <button class="clear-search" id="clearSearchBtn" onclick="clearSearch()">✕</button>
   </div>
   <div class="filters">
     <button class="chip active" onclick="setFilter('all', this)">الكل</button>
-    <button class="chip" onclick="setFilter('waiting', this)">في الانتظار ⏳</button>
-    <button class="chip" onclick="setFilter('inside', this)">عند الدكتور 🩺</button>
-    <button class="chip" onclick="setFilter('done', this)">تم الكشف ✓</button>
+    <button class="chip" onclick="setFilter('waiting', this)">في الانتظار </button>
+    <button class="chip" onclick="setFilter('inside', this)">عند الدكتور </button>
+    <button class="chip" onclick="setFilter('done', this)">تم الكشف</button>
     <button class="chip" onclick="setFilter('exam', this)">كشوفات</button>
     <button class="chip" onclick="setFilter('consult', this)">استشارات</button>
   </div>
@@ -279,8 +194,8 @@
 <div class="list" id="patientList"></div>
 
 <div class="bottom-bar">
-  <button class="btn-add" onclick="openPatientModal(null)">+ حجز / تسجيل مريض</button>
-  <button class="btn-finish" onclick="openFinishDayModal()">📊 إنهاء اليوم والملخص</button>
+  <button class="btn-add" onclick="openPatientModal(null)">حجز جديد</button>
+  <button class="btn-finish" onclick="openFinishDayModal()">إنهاء اليوم</button>
   <button class="btn-menu" onclick="openToolsModal()">⋮</button>
 </div>
 
@@ -295,8 +210,8 @@
     <div class="history-banner" id="historyBanner"></div>
 
     <div class="field-group">
-      <label class="field-label">اسم المريض * (اكتب للبحث في المرضى السابقين)</label>
-      <input type="text" class="field-input" id="ptName" placeholder="اكتب اسم المريض..." oninput="onNameInput()" autocomplete="off" />
+      <label class="field-label">اسم المريض</label>
+      <input type="text" class="field-input" id="ptName" placeholder="اكتب الاسم أو ابحث عن مريض سابق" oninput="onNameInput()" autocomplete="off" />
       <div class="autocomplete-box" id="autocompleteBox"></div>
     </div>
 
@@ -306,7 +221,7 @@
     </div>
 
     <div class="field-group">
-      <label class="field-label">نوع الزيارة والمبلغ (جنيه)</label>
+      <label class="field-label">نوع الزيارة والمبلغ</label>
       <div class="quick-pills" style="margin-bottom:8px;">
         <button type="button" class="q-pill" id="typeExamBtn" onclick="selectVisitType('exam', 200)">كشف (200 ج)</button>
         <button type="button" class="q-pill" id="typeConsultBtn" onclick="selectVisitType('consult', 0)">استشارة (0 ج)</button>
@@ -318,24 +233,23 @@
     <div class="field-group">
       <label class="field-label">طريقة الدفع</label>
       <div class="quick-pills">
-        <button type="button" class="q-pill pay-pill active" data-pay="كاش" onclick="selectPayMethod('كاش', this)">💵 كاش</button>
-        <button type="button" class="q-pill pay-pill" data-pay="إنستاباي" onclick="selectPayMethod('إنستاباي', this)">📱 إنستاباي</button>
-        <button type="button" class="q-pill pay-pill" data-pay="آجل / مجاني" onclick="selectPayMethod('آجل / مجاني', this)">🆓 مجاني / استشارة</button>
+        <button type="button" class="q-pill pay-pill active" data-pay="كاش" onclick="selectPayMethod('كاش', this)">كاش</button>
+        <button type="button" class="q-pill pay-pill" data-pay="إنستاباي" onclick="selectPayMethod('إنستاباي', this)">إنستاباي</button>
+        <button type="button" class="q-pill pay-pill" data-pay="آجل / مجاني" onclick="selectPayMethod('آجل / مجاني', this)">بدون مبلغ</button>
       </div>
     </div>
 
     <div class="field-group">
       <label class="field-label">ملاحظات (اختياري)</label>
-      <input type="text" class="field-input" id="ptNote" placeholder="مثال: تبع د. فلان، مستعجل، حجز تليفوني..." />
+      <input type="text" class="field-input" id="ptNote" placeholder="مثال: حجز تليفوني، مستعجل" />
       <div class="quick-pills">
         <button type="button" class="q-pill" onclick="appendNote('حجز تليفون')">حجز تليفون</button>
-        <button type="button" class="q-pill" onclick="appendNote('تبع عمو خالد')">تبع عمو خالد</button>
         <button type="button" class="q-pill" onclick="appendNote('مستعجل')">مستعجل</button>
       </div>
     </div>
 
-    <button class="btn-save" onclick="savePatient()">حفظ البيانات ✓</button>
-    <button class="btn-danger" id="deletePtBtn" style="display:none;" onclick="deletePatient()">🗑 حذف المريض (صلاحية مدير)</button>
+    <button class="btn-save" onclick="savePatient()">حفظ الحجز</button>
+    <button class="btn-danger" id="deletePtBtn" style="display:none;" onclick="deletePatient()">حذف الحجز</button>
   </div>
 </div>
 
@@ -343,16 +257,11 @@
 <div class="modal-backdrop" id="newSessionModal" onclick="closeModalOnBg(event, 'newSessionModal')">
   <div class="modal">
     <div class="modal-header">
-      <h3 class="modal-title">📅 فتح يوم عيادة جديد (سبت / أربعاء)</h3>
+      <h3 class="modal-title">فتح يوم عيادة</h3>
       <button class="close-btn" onclick="closeModal('newSessionModal')">إغلاق</button>
     </div>
-    <p style="font-size:13px; color:var(--muted); margin-top:0;">اختر يوم العيادة القادم لتسجيل الحجوزات الجديدة فيه (الأيام السابقة تظل محفوظة في القائمة):</p>
-    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;" id="upcomingClinicDays"></div>
-    <div class="field-group">
-      <label class="field-label">أو اختر تاريخ آخر:</label>
-      <input type="date" class="field-input" id="customSessionDate" style="direction:ltr; text-align:right;" />
-      <button class="btn-save" style="margin-top:8px;" onclick="createCustomSession()">فتح اليوم</button>
-    </div>
+    <p class="modal-note">أيام العيادة القادمة (السبت والأربعاء). الأيام السابقة تفضل محفوظة في القائمة.</p>
+    <div class="day-list" id="upcomingClinicDays"></div>
   </div>
 </div>
 
@@ -360,14 +269,14 @@
 <div class="modal-backdrop" id="finishModal" onclick="closeModalOnBg(event, 'finishModal')">
   <div class="modal">
     <div class="modal-header">
-      <h3 class="modal-title">📊 ملخص وتقفيل اليوم</h3>
+      <h3 class="modal-title">ملخص اليوم</h3>
       <button class="close-btn" onclick="closeModal('finishModal')">إغلاق</button>
     </div>
     <div id="summaryContent"></div>
     <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
-      <button class="btn-save" style="background:#16a34a;" onclick="shareWhatsAppReport()">📤 إرسال التقرير على واتساب</button>
-      <button class="btn-save" style="background:#0284c7;" onclick="exportSessionExcel()">📥 تحميل ملف إكسيل (.xlsx)</button>
-      <button class="btn-save" style="background:#334155;" onclick="copyTextReport()">📋 نسخ التقرير نصياً</button>
+      <button class="btn-save" onclick="shareWhatsAppReport()">إرسال التقرير على واتساب</button>
+      <button class="btn-outline" onclick="exportSessionExcel()">تحميل ملف إكسيل</button>
+      <button class="btn-outline" onclick="copyTextReport()">نسخ التقرير</button>
     </div>
   </div>
 </div>
@@ -376,10 +285,10 @@
 <div class="modal-backdrop" id="directoryModal" onclick="closeModalOnBg(event, 'directoryModal')">
   <div class="modal">
     <div class="modal-header">
-      <h3 class="modal-title">📒 سجل المرضى الدائم (<span id="dirCount">0</span>)</h3>
+      <h3 class="modal-title">سجل المرضى (<span id="dirCount">0</span>)</h3>
       <button class="close-btn" onclick="closeModal('directoryModal')">إغلاق</button>
     </div>
-    <input type="text" class="field-input" id="dirSearch" placeholder="ابحث في سجل المرضى السابقين..." oninput="renderDirectory()" style="margin-bottom:10px;" />
+    <input type="text" class="field-input" id="dirSearch" placeholder="ابحث بالاسم أو الرقم" oninput="renderDirectory()" style="margin-bottom:10px;" />
     <div id="directoryList" style="max-height:55vh; overflow-y:auto;"></div>
   </div>
 </div>
@@ -388,13 +297,13 @@
 <div class="modal-backdrop" id="toolsModal" onclick="closeModalOnBg(event, 'toolsModal')">
   <div class="modal">
     <div class="modal-header">
-      <h3 class="modal-title">⚙️ الإعدادات وإدارة الصلاحيات</h3>
+      <h3 class="modal-title">الإعدادات</h3>
       <button class="close-btn" onclick="closeModal('toolsModal')">إغلاق</button>
     </div>
     <div id="adminToolsSection" style="display:flex; flex-direction:column; gap:9px;">
-      <button class="btn-save" style="background:#475569;" onclick="refreshAll(); showToast('تم التحديث ✓');">🔄 تحديث البيانات الآن</button>
-      <button class="btn-save" style="background:#334155;" onclick="doLogout()">🚪 تسجيل الخروج</button>
-      <button class="btn-danger" id="clearDayBtn" style="display:none;" onclick="clearCurrentSession()">🧹 تفريغ قائمة اليوم الحالي (مدير فقط)</button>
+      <button class="btn-outline" onclick="refreshAll(); showToast('تم التحديث');">تحديث البيانات</button>
+      <button class="btn-outline" onclick="doLogout()">تسجيل الخروج</button>
+      <button class="btn-danger" id="clearDayBtn" style="display:none;" onclick="clearCurrentSession()">تفريغ قائمة اليوم (مدير)</button>
     </div>
   </div>
 </div>
@@ -404,7 +313,7 @@
 const CONFIG = {
   SUPABASE_URL: 'https://nmbnvnvxlfxcnmvybxaa.supabase.co',        // مثال: https://abcdxyz.supabase.co
   SUPABASE_ANON_KEY: 'sb_publishable_WD67eZfPEuFp0OfJsfQUUQ_vVStGp2L',      // Project Settings > API > anon public
-  CLINIC_TITLE: 'عيادة د. محمد / حازم'
+  CLINIC_TITLE: 'عيادة د. حازم عبد الحميد'
 };
 
 let sb = null;
@@ -432,8 +341,8 @@ function getCurrentSession() {
 function fail(e) {
   console.error(e);
   const msg = (e && e.message) || '';
-  if (msg.includes('LOCKED')) showToast('⛔ غير مسموح — للمدير فقط');
-  else if (msg.includes('row-level security')) showToast('⛔ ليس لديك صلاحية');
+  if (msg.includes('LOCKED')) showToast('غير مسموح — للمدير فقط');
+  else if (msg.includes('row-level security')) showToast('ليس لديك صلاحية');
   else showToast('خطأ: ' + (msg || 'تعذر الاتصال بالسيرفر').slice(0, 90) + (e && e.code ? ' [' + e.code + ']' : ''));
 }
 function mapVisit(r) {
@@ -521,7 +430,8 @@ function scheduleRefresh() {
 /* ==================== REALTIME ==================== */
 function setConn(ok) {
   const el = document.getElementById('connDot');
-  el.textContent = ok ? '🟢 متصل' : '🔴 غير متصل';
+  el.textContent = ok ? 'متصل' : 'غير متصل';
+  el.classList.toggle('off', !ok);
 }
 function subscribeRealtime() {
   if (channel) sb.removeChannel(channel);
@@ -545,10 +455,10 @@ function updateRoleUI() {
   const who = me && me.full_name ? ' — ' + me.full_name : '';
   if (isAdmin) {
     topbar.classList.add('admin-mode');
-    badge.textContent = '🔑 مدير' + who + ' (اضغط للخروج)';
+    badge.textContent = 'مدير' + who;
   } else {
     topbar.classList.remove('admin-mode');
-    badge.textContent = '👤 استقبال' + who + ' (اضغط للخروج)';
+    badge.textContent = 'استقبال' + who;
   }
   if (clearBtn) clearBtn.style.display = isAdmin ? 'block' : 'none';
 }
@@ -574,12 +484,11 @@ function openNewSessionModal() {
   const box = document.getElementById('upcomingClinicDays');
   box.innerHTML = getNextClinicDates().map(u => {
     const exists = db.days.some(d => d.day === u.id) || u.id === db.activeDay;
-    return `<button class="btn-save" style="background:${exists ? '#0284c7' : '#0f766e'}; text-align:right; display:flex; justify-content:space-between;" onclick="selectOrCreateSession('${u.id}')">
-      <span>📅 ${esc(u.label)}</span>
-      <span>${exists ? 'فتح ↗' : '+ فتح'}</span>
+    return `<button class="day-row ${u.id === db.activeDay ? 'current' : ''}" onclick="selectOrCreateSession('${u.id}')">
+      <span>${esc(u.label)}</span>
+      <small>${u.id === db.activeDay ? 'الحالي' : (exists ? 'فيه حجوزات' : 'يوم جديد')}</small>
     </button>`;
   }).join('');
-  document.getElementById('customSessionDate').value = '';
   document.getElementById('newSessionModal').classList.add('open');
 }
 async function selectOrCreateSession(id) {
@@ -594,7 +503,7 @@ function createCustomSession() {
 }
 
 async function clearCurrentSession() {
-  if (!isAdmin) return showToast('⛔ هذه الصلاحية للمدير فقط');
+  if (!isAdmin) return showToast('هذه الصلاحية للمدير فقط');
   const sess = getCurrentSession();
   if (!confirm(`هل أنت متأكد من مسح جميع حالات (${sess.label})؟`)) return;
   const { error } = await sb.from('visits').delete().eq('day', db.activeDay);
@@ -615,13 +524,13 @@ function pickDirectoryPatient(name, phone, lastVisit, lastType) {
   const diff = Math.round((new Date(db.activeDay + 'T00:00:00') - new Date(lastVisit + 'T00:00:00')) / 86400000);
   banner.style.display = 'block';
   if (diff === 0) {
-    banner.innerHTML = '⚠️ المريض مسجل بالفعل في هذا اليوم';
+    banner.innerHTML = 'المريض مسجل بالفعل في هذا اليوم';
   } else if (lastType === 'exam' && diff > 0 && diff <= 14) {
-    banner.innerHTML = `💡 مريض متكرر (آخر كشف: منذ ${diff} يوم) — تم ضبطها كـ <u>استشارة مجانية</u> تلقائياً`;
+    banner.innerHTML = `مريض متكرر (آخر كشف: منذ ${diff} يوم) — تم ضبطها كـ <u>استشارة مجانية</u> تلقائياً`;
     selectVisitType('consult', 0);
     selectPayMethod('آجل / مجاني', document.querySelector('[data-pay="آجل / مجاني"]'));
   } else {
-    banner.innerHTML = `💡 مريض مسجل سابقاً (آخر زيارة: ${diff > 0 ? 'منذ ' + diff + ' يوم' : esc(lastVisit)})`;
+    banner.innerHTML = `مريض مسجل سابقاً (آخر زيارة: ${diff > 0 ? 'منذ ' + diff + ' يوم' : esc(lastVisit)})`;
   }
 }
 
@@ -633,7 +542,7 @@ function openPatientModal(id) {
   const delBtn = document.getElementById('deletePtBtn');
 
   if (id === null) {
-    document.getElementById('patientModalTitle').textContent = `حجز جديد (${sess.label}) - دور #${sess.patients.length + 1}`;
+    document.getElementById('patientModalTitle').textContent = `حجز جديد — دور رقم ${sess.patients.length + 1}`;
     document.getElementById('ptName').value = '';
     document.getElementById('ptPhone').value = '';
     document.getElementById('ptNote').value = '';
@@ -644,7 +553,7 @@ function openPatientModal(id) {
     const pt = sess.patients.find(p => p.id === id);
     if (!pt) return;
     if (!isAdmin && pt.status === 'done') {
-      showToast('🔒 تم الكشف بالفعل — التعديل متاح للمدير فقط');
+      showToast('تم الكشف بالفعل — التعديل متاح للمدير فقط');
       return;
     }
     document.getElementById('patientModalTitle').textContent = 'تعديل بيانات المريض';
@@ -677,14 +586,14 @@ async function savePatient() {
     if (editingId === null) {
       const { error } = await sb.from('visits').insert({ ...row, day: db.activeDay, status: 'waiting' });
       if (error) return fail(error);
-      showToast('تم تسجيل الحجز ✓');
+      showToast('تم تسجيل الحجز');
     } else {
       const pt = db.patients.find(p => p.id === editingId);
-      if (!isAdmin && pt && Number(pt.fee) !== fee) return showToast('⛔ تعديل المبلغ متاح للمدير فقط');
+      if (!isAdmin && pt && Number(pt.fee) !== fee) return showToast('تعديل المبلغ متاح للمدير فقط');
       const { data, error } = await sb.from('visits').update(row).eq('id', editingId).select('id');
       if (error) return fail(error);
-      if (!data.length) return showToast('⛔ غير مسموح بالتعديل');
-      showToast('تم حفظ التعديل ✓');
+      if (!data.length) return showToast('غير مسموح بالتعديل');
+      showToast('تم حفظ التعديل');
     }
     closeModal('patientModal');
     await refreshAll();
@@ -692,11 +601,11 @@ async function savePatient() {
 }
 
 async function deletePatient() {
-  if (!isAdmin) return showToast('⛔ الحذف للمدير فقط');
+  if (!isAdmin) return showToast('الحذف للمدير فقط');
   if (!confirm('حذف هذا المريض نهائياً من قائمة اليوم؟')) return;
   const { data, error } = await sb.from('visits').delete().eq('id', editingId).select('id');
   if (error) return fail(error);
-  if (!data.length) return showToast('⛔ غير مسموح بالحذف');
+  if (!data.length) return showToast('غير مسموح بالحذف');
   closeModal('patientModal');
   await refreshAll();
   showToast('تم الحذف');
@@ -705,12 +614,12 @@ async function deletePatient() {
 async function cycleStatus(id) {
   const pt = db.patients.find(p => p.id === id);
   if (!pt) return;
-  if (!isAdmin && pt.status === 'done') return showToast('🔒 تم تأكيد الكشف — للتراجع اطلب المدير');
+  if (!isAdmin && pt.status === 'done') return showToast('تم تأكيد الكشف — للتراجع اطلب المدير');
   const order = ['waiting', 'inside', 'done'];
   const next = order[(order.indexOf(pt.status) + 1) % order.length];
   const { data, error } = await sb.from('visits').update({ status: next }).eq('id', id).select('id');
   if (error) return fail(error);
-  if (!data.length) return showToast('⛔ غير مسموح');
+  if (!data.length) return showToast('غير مسموح');
   pt.status = next; // instant feedback; realtime refresh confirms
   render();
 }
@@ -720,9 +629,9 @@ function renderList() {
   const sess = getCurrentSession();
   const container = document.getElementById('patientList');
   const statusLabels = {
-    waiting: { text: '⏳ في الانتظار', cls: '' },
-    inside: { text: '🩺 عند الدكتور', cls: 'inside' },
-    done: { text: '✓ تم الكشف', cls: 'done' }
+    waiting: { text: 'في الانتظار', cls: '' },
+    inside: { text: 'عند الدكتور', cls: 'inside' },
+    done: { text: 'تم الكشف', cls: 'done' }
   };
 
   const filtered = sess.patients.filter((p, idx) => {
@@ -768,9 +677,9 @@ function renderList() {
           <span class="badge ${isConsult ? 'badge-type-consult' : 'badge-type-exam'}">${isConsult ? 'استشارة' : 'كشف'}</span>
           <span class="badge badge-fee">${p.fee} ج</span>
           ${p.fee > 0 ? `<span class="badge badge-pay">${esc(p.payMethod || 'كاش')}</span>` : ''}
-          ${p.note ? `<span class="badge badge-note">📌 ${esc(p.note)}</span>` : ''}
-          ${p.phone ? `<a class="badge badge-call" href="tel:${esc(p.phone)}" onclick="event.stopPropagation()">📞</a>` : ''}
-          <span class="badge badge-edit" onclick="openPatientModal('${p.id}')">تعديل ✎</span>
+          ${p.note ? `<span class="badge badge-note">${esc(p.note)}</span>` : ''}
+          ${p.phone ? `<a class="badge badge-call" href="tel:${esc(p.phone)}" onclick="event.stopPropagation()"></a>` : ''}
+          <span class="badge badge-edit" onclick="openPatientModal('${p.id}')">تعديل</span>
         </div>
       </div>
     `;
@@ -792,7 +701,7 @@ function render() {
 (async function init() {
   document.getElementById('clinicTitleInput').value = db.clinicTitle;
   if (CONFIG.SUPABASE_URL.includes('YOUR-') || CONFIG.SUPABASE_ANON_KEY.includes('YOUR-')) {
-    return showLogin('⚠️ لازم تحط SUPABASE_URL و SUPABASE_ANON_KEY في أول السكربت');
+    return showLogin('لازم تحط SUPABASE_URL و SUPABASE_ANON_KEY في أول السكربت');
   }
   if (typeof supabase === 'undefined') return showLogin('تعذر تحميل مكتبة Supabase — تأكد من الإنترنت');
   sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
@@ -819,7 +728,7 @@ function localISO(d) {
 function getNextClinicDates() {
   const results = [];
   const d = new Date();
-  for (let i = 0; i < 14 && results.length < 4; i++) {
+  for (let i = 0; i < 31 && results.length < 6; i++) {
     const day = d.getDay(); // 6 = Saturday, 3 = Wednesday
     if (day === 6 || day === 3) {
       const dayName = day === 6 ? 'السبت' : 'الأربعاء';
@@ -941,7 +850,7 @@ function shareWhatsAppReport() {
 }
 
 function copyTextReport() {
-  navigator.clipboard.writeText(buildReportText()).then(() => showToast('تم نسخ ملخص اليوم ✓'));
+  navigator.clipboard.writeText(buildReportText()).then(() => showToast('تم نسخ ملخص اليوم'));
 }
 
 function exportSessionExcel() {
@@ -990,7 +899,7 @@ function exportSessionExcel() {
   XLSX.utils.book_append_sheet(wb, mk(consultRows, [5, 24, 16, 12, 14, 24]), 'الاستشارات');
   XLSX.utils.book_append_sheet(wb, mk(summaryRows, [24, 26]), 'الملخص');
   XLSX.writeFile(wb, `عيادة_${sess.label.replace(/[\/\\:*?"<>|]/g, '-')}.xlsx`);
-  showToast('تم تحميل ملف الإكسيل ✓');
+  showToast('تم تحميل ملف الإكسيل');
 }
 
 function openFinishDayModal() {
@@ -1005,17 +914,17 @@ function openFinishDayModal() {
 
   let html = `
     <div style="font-weight:800; font-size:14px; color:var(--primary-dark); margin-bottom:10px;">
-      🏥 ${esc(db.clinicTitle)} — 📅 ${esc(sess.label)}
+      ${esc(db.clinicTitle)} — ${esc(sess.label)}
     </div>
     <div class="summary-grid">
       <div class="sum-card"><div class="val">${grandTotal} ج</div><div class="lbl">إجمالي الإيراد اليومي</div></div>
       <div class="sum-card"><div class="val">${doneCount} / ${sess.patients.length}</div><div class="lbl">حالات تم كشفها</div></div>
-      <div class="sum-card"><div class="val" style="color:#15803d;">${cashTotal} ج</div><div class="lbl">💵 إجمالي الكاش</div></div>
-      <div class="sum-card"><div class="val" style="color:#1d4ed8;">${instaTotal} ج</div><div class="lbl">📱 إجمالي إنستاباي</div></div>
+      <div class="sum-card"><div class="val" style="color:#15803d;">${cashTotal} ج</div><div class="lbl">إجمالي الكاش</div></div>
+      <div class="sum-card"><div class="val" style="color:#1d4ed8;">${instaTotal} ج</div><div class="lbl">إجمالي إنستاباي</div></div>
     </div>
     <div class="summary-grid">
-      <div class="sum-card"><div class="val">${exams.length} / ${consults.length}</div><div class="lbl">🩺 كشوفات / استشارات</div></div>
-      <div class="sum-card"><div class="val" style="color:#854d0e;">${otherTotal} ج</div><div class="lbl">🆓 آجل / مجاني</div></div>
+      <div class="sum-card"><div class="val">${exams.length} / ${consults.length}</div><div class="lbl">كشوفات / استشارات</div></div>
+      <div class="sum-card"><div class="val" style="color:#854d0e;">${otherTotal} ج</div><div class="lbl">آجل / مجاني</div></div>
     </div>
     <table class="summary-table">
       <thead><tr><th>#</th><th>الاسم</th><th>النوع</th><th>المبلغ</th><th>الدفع</th><th>الحالة</th></tr></thead>
@@ -1027,7 +936,7 @@ function openFinishDayModal() {
             <td>${p.type === 'consult' ? 'استشارة' : 'كشف'}</td>
             <td>${p.fee} ج</td>
             <td>${esc(p.payMethod || 'كاش')}</td>
-            <td>${p.status === 'done' ? '✅ تم' : (p.status === 'inside' ? '🩺 بالداخل' : '⏳ انتظار')}</td>
+            <td>${p.status === 'done' ? 'تم' : (p.status === 'inside' ? 'بالداخل' : 'انتظار')}</td>
           </tr>
         `).join('')}
       </tbody>
