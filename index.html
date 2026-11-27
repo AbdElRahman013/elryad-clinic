@@ -157,6 +157,11 @@
     .dir-name { font-weight: 600; font-size: 15px; }
     .dir-sub { font-size: 12.5px; color: var(--muted); }
     .q-pill.danger { color: var(--red); border-color: #efc4be; }
+  
+    body:not(.is-admin) .admin-only { display: none !important; }
+    .last-exam { background: #f6f8fa; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+    .last-exam .field-label { margin-bottom: 6px; }
+    .remain-hint { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -200,8 +205,8 @@
 
 <div class="stats-bar">
   <div class="stat-box"><div class="stat-num" style="color:var(--primary)" id="stat-total">0</div><div class="stat-lbl">الحالات</div></div>
-  <div class="stat-box"><div class="stat-num" style="color:var(--amber)" id="stat-waiting">0</div><div class="stat-lbl">في الانتظار</div></div>
-  <div class="stat-box"><div class="stat-num" style="color:var(--green)" id="stat-done">0</div><div class="stat-lbl">تم الكشف</div></div>
+  <div class="stat-box"><div class="stat-num" style="color:var(--amber)" id="stat-waiting">0</div><div class="stat-lbl" id="stat-lbl-2">في الانتظار</div></div>
+  <div class="stat-box"><div class="stat-num" style="color:var(--green)" id="stat-done">0</div><div class="stat-lbl" id="stat-lbl-3">تم الكشف</div></div>
   <div class="stat-box"><div class="stat-num" style="color:var(--blue)" id="stat-total-fee">0</div><div class="stat-lbl">المحصّل (ج)<span id="stat-remain" class="stat-sub"></span></div></div>
 </div>
 
@@ -212,10 +217,10 @@
   </div>
   <div class="filters">
     <button class="chip active" onclick="setFilter('all', this)">الكل</button>
-    <button class="chip" onclick="setFilter('waiting', this)">في الانتظار </button>
-    <button class="chip" onclick="setFilter('inside', this)">عند الدكتور </button>
-    <button class="chip" onclick="setFilter('done', this)">تم الكشف</button>
-    <button class="chip" onclick="setFilter('novision', this)">بدون قياس نظر</button>
+    <button class="chip admin-only" onclick="setFilter('waiting', this)">في الانتظار </button>
+    <button class="chip admin-only" onclick="setFilter('inside', this)">عند الدكتور </button>
+    <button class="chip admin-only" onclick="setFilter('done', this)">تم الكشف</button>
+    <button class="chip admin-only" onclick="setFilter('novision', this)">بدون قياس نظر</button>
     <button class="chip" onclick="setFilter('unpaid', this)">عليهم متبقي</button>
     <button class="chip" onclick="setFilter('exam', this)">كشوفات</button>
     <button class="chip" onclick="setFilter('consult', this)">استشارات</button>
@@ -257,6 +262,11 @@
         <button type="button" class="q-pill" id="typeExamBtn" onclick="selectVisitType('exam', 200)">كشف (200 ج)</button>
         <button type="button" class="q-pill" id="typeConsultBtn" onclick="selectVisitType('consult', 0)">استشارة (0 ج)</button>
         <button type="button" class="q-pill" id="typeCustomBtn" onclick="selectVisitType('exam', '')">مبلغ مخصص</button>
+      </div>
+      <div id="lastExamGroup" class="last-exam" style="display:none;">
+        <label class="field-label">تاريخ الكشف السابق (اختياري)</label>
+        <input type="text" inputmode="numeric" class="field-input" id="ptLastExam" placeholder="يوم/شهر/سنة — مثال 15/11/2026" oninput="onLastExamInput()" style="direction:ltr; text-align:right;" />
+        <div class="remain-hint" id="lastExamHint"></div>
       </div>
       <div class="pay-grid">
         <div><label class="field-label">المبلغ الكلي</label>
@@ -384,7 +394,8 @@ function fail(e) {
 }
 function mapVisit(r) {
   return { id: r.id, name: r.name, phone: r.phone || '', type: r.type, fee: r.fee, paid: r.paid == null ? r.fee : r.paid,
-    vision: !!r.vision_done, payMethod: r.pay_method, note: r.note || '', status: r.status, updatedAt: Date.parse(r.updated_at) || 0 };
+    vision: !!r.vision_done, lastExam: r.last_exam_date || '', payMethod: r.pay_method, note: r.note || '', status: r.status,
+    updatedAt: Date.parse(r.updated_at) || 0 };
 }
 function mapPatient(r) {
   return { id: r.id, name: r.name, phone: r.phone || '', lastVisit: r.last_visit || '',
@@ -528,6 +539,7 @@ function updateRoleUI() {
     badge.textContent = 'استقبال' + who;
   }
   if (clearBtn) clearBtn.style.display = isAdmin ? 'block' : 'none';
+  document.body.classList.toggle('is-admin', isAdmin);
 }
 
 /* ==================== CLINIC DAYS ==================== */
@@ -585,19 +597,18 @@ function pickDirectoryPatient(name, phone, lastVisit, lastType) {
   document.getElementById('ptName').value = name;
   document.getElementById('ptPhone').value = phone;
   document.getElementById('autocompleteBox').style.display = 'none';
-
   const banner = document.getElementById('historyBanner');
+  banner.style.display = 'none';
   if (!lastVisit) return;
-  const diff = Math.round((new Date(db.activeDay + 'T00:00:00') - new Date(lastVisit + 'T00:00:00')) / 86400000);
+  const diff = daysBetween(lastVisit, db.activeDay);
   banner.style.display = 'block';
-  if (diff === 0) {
-    banner.innerHTML = 'المريض مسجل بالفعل في هذا اليوم';
-  } else if (lastType === 'exam' && diff > 0 && diff <= 14) {
-    banner.innerHTML = `مريض متكرر (آخر كشف: منذ ${diff} يوم) — تم ضبطها كـ <u>استشارة مجانية</u> تلقائياً`;
-    selectVisitType('consult', 0);
-    selectPayMethod('آجل / مجاني', document.querySelector('[data-pay="آجل / مجاني"]'));
-  } else {
-    banner.innerHTML = `مريض مسجل سابقاً (آخر زيارة: ${diff > 0 ? 'منذ ' + diff + ' يوم' : esc(lastVisit)})`;
+  if (diff === 0) { banner.textContent = 'المريض مسجل بالفعل في هذا اليوم'; return; }
+  banner.textContent = 'مريض مسجل سابقاً — آخر زيارة ' + (diff > 0 ? 'منذ ' + diff + ' يوم' : lastVisit) + (lastType === 'exam' ? '' : ' (استشارة)');
+  if (lastType === 'exam' && diff > 0) {
+    document.getElementById('ptLastExam').value = toDMY(lastVisit);
+    document.getElementById('lastExamGroup').style.display = 'block';
+    onLastExamInput();
+    banner.textContent += ' — تم تحديد نوع الزيارة من تاريخ الكشف';
   }
 }
 
@@ -613,22 +624,20 @@ function openPatientModal(id) {
     document.getElementById('ptName').value = '';
     document.getElementById('ptPhone').value = '';
     document.getElementById('ptNote').value = '';
+    document.getElementById('ptLastExam').value = ''; document.getElementById('lastExamHint').textContent = '';
     selectPayMethod('كاش', document.querySelector('[data-pay="كاش"]'));
     selectVisitType('exam', 200);
     delBtn.style.display = 'none';
   } else {
     const pt = sess.patients.find(p => p.id === id);
     if (!pt) return;
-    if (!isAdmin && pt.status === 'done') {
-      showToast('تم الكشف بالفعل — التعديل متاح للمدير فقط');
-      return;
-    }
     document.getElementById('patientModalTitle').textContent = 'تعديل بيانات المريض';
     document.getElementById('ptName').value = pt.name;
     document.getElementById('ptPhone').value = pt.phone || '';
     document.getElementById('ptFee').value = pt.fee;
     paidTouched = true; document.getElementById('ptPaid').value = pt.paid; updateRemainHint();
     document.getElementById('ptNote').value = pt.note || '';
+    document.getElementById('ptLastExam').value = toDMY(pt.lastExam); document.getElementById('lastExamHint').textContent = '';
     selectedType = pt.type || 'exam';
     document.getElementById('typeExamBtn').classList.toggle('active', selectedType === 'exam' && Number(pt.fee) === 200);
     document.getElementById('typeConsultBtn').classList.toggle('active', selectedType === 'consult');
@@ -649,9 +658,12 @@ async function savePatient() {
   const paidRaw = document.getElementById('ptPaid').value;
   const paid = paidRaw === '' ? fee : Number(paidRaw);
   const note = document.getElementById('ptNote').value.trim();
+  const examRaw = document.getElementById('ptLastExam').value.trim();
+  const lastExam = examRaw ? parseDMY(examRaw) : null;
+  if (examRaw && !lastExam) return showToast('تاريخ الكشف غير صحيح — اكتبه يوم/شهر/سنة');
   if (fee < 0 || paid < 0) return showToast('المبلغ غير صحيح');
   if (paid > fee) return showToast('المدفوع أكبر من المبلغ الكلي');
-  const row = { name, phone, type: selectedType, fee, paid, note, pay_method: paid === 0 ? 'آجل / مجاني' : selectedPay };
+  const row = { name, phone, type: selectedType, fee, paid, note, last_exam_date: lastExam, pay_method: paid === 0 ? 'آجل / مجاني' : selectedPay };
 
   saving = true;
   try {
@@ -660,9 +672,6 @@ async function savePatient() {
       if (error) return fail(error);
       showToast('تم تسجيل الحجز');
     } else {
-      const pt = db.patients.find(p => p.id === editingId);
-      if (!isAdmin && pt && Number(pt.fee) !== fee) return showToast('تعديل المبلغ الكلي متاح للمدير فقط');
-      if (!isAdmin && pt && paid < pt.paid) return showToast('تقليل المدفوع متاح للمدير فقط');
       const { data, error } = await sb.from('visits').update(row).eq('id', editingId).select('id');
       if (error) return fail(error);
       if (!data.length) return showToast('غير مسموح بالتعديل');
@@ -750,7 +759,7 @@ function renderList() {
   container.innerHTML = filtered.map(p => {
     const turnNum = sess.patients.indexOf(p) + 1;
     const st = statusLabels[p.status] || statusLabels.waiting;
-    const cardCls = p.status === 'inside' ? 'card status-inside' : (p.status === 'done' ? 'card status-done' : 'card');
+    const cardCls = !isAdmin ? 'card' : (p.status === 'inside' ? 'card status-inside' : (p.status === 'done' ? 'card status-done' : 'card'));
     const rest = p.fee - p.paid;
     return `
       <div class="${cardCls}">
@@ -762,16 +771,17 @@ function renderList() {
               ${p.phone ? `<div class="pt-phone">${esc(p.phone)}</div>` : ''}
             </div>
           </div>
-          <button class="status-btn ${st.cls}" onclick="cycleStatus('${p.id}')">${st.text}</button>
+          ${isAdmin ? `<button class="status-btn ${st.cls}" onclick="cycleStatus('${p.id}')">${st.text}</button>` : ''}
         </div>
         <div class="meta-row">
           <span class="badge ${p.type === 'consult' ? 'badge-type-consult' : 'badge-type-exam'}">${p.type === 'consult' ? 'استشارة' : 'كشف'}</span>
           ${p.fee > 0 ? `<span class="badge badge-fee">${p.paid} / ${p.fee} ج</span>` : `<span class="badge">بدون مبلغ</span>`}
           ${p.paid > 0 ? `<span class="badge">${esc(p.payMethod || 'كاش')}</span>` : ''}
+          ${p.lastExam ? `<span class="badge">كشف سابق ${toDMY(p.lastExam)} (منذ ${daysBetween(p.lastExam, db.activeDay)} يوم)</span>` : ''}
           ${p.note ? `<span class="badge badge-note">${esc(p.note)}</span>` : ''}
         </div>
         <div class="action-row">
-          <button class="vis-btn ${p.vision ? 'on' : ''}" onclick="toggleVision('${p.id}')">${p.vision ? 'تم قياس النظر' : 'قياس النظر: لم يتم'}</button>
+          ${isAdmin ? `<button class="vis-btn ${p.vision ? 'on' : ''}" onclick="toggleVision('${p.id}')">${p.vision ? 'تم قياس النظر' : 'قياس النظر: لم يتم'}</button>` : ''}
           ${rest > 0 ? `<button class="due-btn" onclick="collectRemaining('${p.id}')">تحصيل المتبقي ${rest} ج</button>` : ''}
           <span class="grow"></span>
           ${p.phone ? `<a class="act-link" href="tel:${esc(p.phone)}">اتصال</a>` : ''}
@@ -787,8 +797,11 @@ function render() {
   document.getElementById('clinicTitleInput').value = db.clinicTitle;
   renderDaySelector();
   document.getElementById('stat-total').textContent = sess.patients.length;
-  document.getElementById('stat-waiting').textContent = sess.patients.filter(p => p.status === 'waiting').length;
-  document.getElementById('stat-done').textContent = sess.patients.filter(p => p.status === 'done').length;
+  const isEx = p => p.type !== 'consult';
+  document.getElementById('stat-lbl-2').textContent = isAdmin ? 'في الانتظار' : 'كشوفات';
+  document.getElementById('stat-lbl-3').textContent = isAdmin ? 'تم الكشف' : 'استشارات';
+  document.getElementById('stat-waiting').textContent = isAdmin ? sess.patients.filter(p => p.status === 'waiting').length : sess.patients.filter(isEx).length;
+  document.getElementById('stat-done').textContent = isAdmin ? sess.patients.filter(p => p.status === 'done').length : sess.patients.filter(p => !isEx(p)).length;
   const paidSum = sess.patients.reduce((s, p) => s + (Number(p.paid) || 0), 0);
   const feeSum = sess.patients.reduce((s, p) => s + (Number(p.fee) || 0), 0);
   document.getElementById('stat-total-fee').textContent = paidSum;
@@ -845,6 +858,44 @@ function getNextClinicDates() {
   return results;
 }
 
+const CONSULT_DAYS = 14; // استشارة مجانية خلال 14 يوم من الكشف
+function parseDMY(str) {
+  const m = String(str).trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (!m) return null;
+  const d = +m[1], mo = +m[2], y = +m[3];
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return localISO(dt);
+}
+function toDMY(iso) { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${+d}/${+m}/${y}`; }
+function daysBetween(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
+function syncLastExamVisibility() {
+  const has = document.getElementById('ptLastExam').value.trim() !== '';
+  document.getElementById('lastExamGroup').style.display = (selectedType === 'consult' || has) ? 'block' : 'none';
+}
+function onLastExamInput() {
+  const v = document.getElementById('ptLastExam').value.trim();
+  const hint = document.getElementById('lastExamHint');
+  hint.className = 'remain-hint';
+  if (!v) { hint.textContent = ''; return; }
+  const iso = parseDMY(v);
+  if (!iso) { hint.textContent = v.length < 8 ? 'اكتب التاريخ كاملاً: يوم/شهر/سنة' : 'تاريخ غير صحيح'; if (v.length >= 8) hint.classList.add('err'); return; }
+  const days = daysBetween(iso, db.activeDay);
+  if (days < 0) { hint.textContent = 'تاريخ الكشف بعد يوم الحجز'; hint.classList.add('err'); return; }
+  if (days <= CONSULT_DAYS) {
+    selectVisitType('consult', 0);
+    selectPayMethod('آجل / مجاني', document.querySelector('[data-pay="آجل / مجاني"]'));
+    hint.textContent = `مر ${days} يوم على الكشف — استشارة مجانية (خلال ${CONSULT_DAYS} يوم)`;
+    hint.classList.add('ok');
+  } else {
+    selectVisitType('exam', 200);
+    if (selectedPay === 'آجل / مجاني') selectPayMethod('كاش', document.querySelector('[data-pay="كاش"]'));
+    hint.textContent = `مر ${days} يوم على الكشف — تعدّت ${CONSULT_DAYS} يوم، فبتتحسب كشف جديد`;
+    hint.classList.add('warn');
+  }
+  syncLastExamVisibility();
+}
+
 let paidTouched = false;
 function updateRemainHint() {
   const f = Number(document.getElementById('ptFee').value) || 0;
@@ -858,6 +909,7 @@ function onFeeInput() { if (!paidTouched) document.getElementById('ptPaid').valu
 function onPaidInput() { paidTouched = true; updateRemainHint(); }
 
 function selectVisitType(type, defaultFee) {
+  queueMicrotask(syncLastExamVisibility);
   selectedType = type;
   document.getElementById('typeExamBtn').classList.toggle('active', type === 'exam' && defaultFee === 200);
   document.getElementById('typeConsultBtn').classList.toggle('active', type === 'consult');
@@ -938,14 +990,14 @@ function buildReportText() {
   const cash = sum(P.filter(p => (p.payMethod || 'كاش') === 'كاش'), 'paid');
   const insta = sum(P.filter(p => p.payMethod === 'إنستاباي'), 'paid');
   const exams = P.filter(p => p.type !== 'consult'), consults = P.filter(p => p.type === 'consult');
-  const line = (p, i) => `${i + 1}. ${p.status === 'done' ? '✅' : '⏳'} ${p.name} — ${p.paid}/${p.fee} ج${p.fee > p.paid ? ' (متبقي ' + (p.fee - p.paid) + ')' : ''}${p.note ? ' [' + p.note + ']' : ''}`;
+  const line = (p, i) => `${i + 1}. ${isAdmin ? (p.status === 'done' ? '✅ ' : '⏳ ') : ''}${p.name} — ${p.paid}/${p.fee} ج${p.fee > p.paid ? ' (متبقي ' + (p.fee - p.paid) + ')' : ''}${p.note ? ' [' + p.note + ']' : ''}`;
   const lines = [
     `*ملخص ${db.clinicTitle}*`,
     `اليوم: ${sess.label}`,
     `━━━━━━━━━━━━━━━`,
     `*المحصّل: ${got} جنيه* (من ${due})`,
     `كاش: ${cash} ج | إنستاباي: ${insta} ج | متبقي: ${due - got} ج`,
-    `الحالات: ${P.length} (كشف ${exams.length} | استشارة ${consults.length}) — تم الكشف: ${P.filter(p => p.status === 'done').length}`,
+    `الحالات: ${P.length} (كشف ${exams.length} | استشارة ${consults.length}) ${isAdmin ? ' — تم الكشف: ' + P.filter(p => p.status === 'done').length : ''}`,
     `━━━━━━━━━━━━━━━`,
     `*الكشوفات (${exams.length})*`, ...exams.map(line)
   ];
@@ -968,22 +1020,26 @@ function exportSessionExcel() {
   const stTxt = p => p.status === 'done' ? 'تم الكشف' : (p.status === 'inside' ? 'عند الدكتور' : 'في الانتظار');
   const sum = (arr, k) => arr.reduce((t, p) => t + (Number(p[k]) || 0), 0);
   const exams = P.filter(p => p.type !== 'consult'), consults = P.filter(p => p.type === 'consult');
-  const head = ['م', 'اسم المريض', 'رقم التليفون', 'المبلغ الكلي', 'المدفوع', 'المتبقي', 'طريقة الدفع', 'قياس النظر', 'الحالة', 'ملاحظات'];
-  const row = (p, i) => [i + 1, p.name, p.phone || '', p.fee, p.paid, p.fee - p.paid, p.payMethod || '', p.vision ? 'تم' : 'لم يتم', stTxt(p), p.note || ''];
-  const examRows = [head, ...exams.map(row), ['', 'الإجمالي', '', sum(exams, 'fee'), sum(exams, 'paid'), sum(exams, 'fee') - sum(exams, 'paid'), '', '', '', '']];
+  const adminCols = isAdmin ? ['قياس النظر', 'الحالة'] : [];
+  const head = ['م', 'اسم المريض', 'رقم التليفون', 'المبلغ الكلي', 'المدفوع', 'المتبقي', 'طريقة الدفع', 'تاريخ الكشف السابق', ...adminCols, 'ملاحظات'];
+  const row = (p, i) => [i + 1, p.name, p.phone || '', p.fee, p.paid, p.fee - p.paid, p.payMethod || '', toDMY(p.lastExam),
+    ...(isAdmin ? [p.vision ? 'تم' : 'لم يتم', stTxt(p)] : []), p.note || ''];
+  const pad = n => new Array(n).fill('');
+  const examRows = [head, ...exams.map(row), ['', 'الإجمالي', '', sum(exams, 'fee'), sum(exams, 'paid'), sum(exams, 'fee') - sum(exams, 'paid'), ...pad(head.length - 6)]];
   const consultRows = [head, ...consults.map(row)];
   const due = sum(P, 'fee'), got = sum(P, 'paid');
   const summaryRows = [
     ['ملخص اليوم', ''], ['العيادة', db.clinicTitle], ['اليوم', sess.label], ['', ''],
     ['عدد الكشوفات', exams.length], ['عدد الاستشارات', consults.length], ['إجمالي الحالات', P.length],
-    ['حالات تم كشفها', P.filter(p => p.status === 'done').length], ['تم قياس نظرهم', P.filter(p => p.vision).length], ['', ''],
+    ...(isAdmin ? [['حالات تم كشفها', P.filter(p => p.status === 'done').length], ['تم قياس نظرهم', P.filter(p => p.vision).length]] : []),
+    ['', ''],
     ['إجمالي المستحق (ج)', due], ['المحصّل فعلياً (ج)', got],
     ['منه كاش (ج)', sum(P.filter(p => (p.payMethod || 'كاش') === 'كاش'), 'paid')],
     ['منه إنستاباي (ج)', sum(P.filter(p => p.payMethod === 'إنستاباي'), 'paid')],
     ['المتبقي (ج)', due - got]
   ];
   const mk = (rows, widths) => { const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = widths.map(w => ({ wch: w })); return ws; };
-  const w = [5, 24, 16, 13, 11, 11, 14, 12, 14, 24];
+  const w = [5, 24, 16, 13, 11, 11, 14, 18, ...(isAdmin ? [12, 14] : []), 24];
   const wb = XLSX.utils.book_new();
   wb.Workbook = { Views: [{ RTL: true }] };
   XLSX.utils.book_append_sheet(wb, mk(examRows, w), 'الكشوفات');
@@ -1009,14 +1065,16 @@ function openFinishDayModal() {
       <div class="sum-card"><div class="val" style="color:var(--amber);">${due - got} ج</div><div class="lbl">متبقي لم يُحصَّل</div></div>
       <div class="sum-card"><div class="val">${cash} ج</div><div class="lbl">كاش</div></div>
       <div class="sum-card"><div class="val">${insta} ج</div><div class="lbl">إنستاباي</div></div>
-      <div class="sum-card"><div class="val">${P.filter(p => p.status === 'done').length} / ${P.length}</div><div class="lbl">تم كشفهم</div></div>
-      <div class="sum-card"><div class="val">${P.filter(p => p.vision).length} / ${P.length}</div><div class="lbl">تم قياس نظرهم</div></div>
+      ${isAdmin ? `<div class="sum-card"><div class="val">${P.filter(p => p.status === 'done').length} / ${P.length}</div><div class="lbl">تم كشفهم</div></div>
+      <div class="sum-card"><div class="val">${P.filter(p => p.vision).length} / ${P.length}</div><div class="lbl">تم قياس نظرهم</div></div>`
+      : `<div class="sum-card"><div class="val">${exams}</div><div class="lbl">كشوفات</div></div>
+      <div class="sum-card"><div class="val">${consults}</div><div class="lbl">استشارات</div></div>`}
     </div>
     <div class="modal-note">${exams} كشف · ${consults} استشارة · إجمالي المستحق ${due} ج</div>
     <div style="overflow-x:auto;"><table class="summary-table">
-      <thead><tr><th>#</th><th>الاسم</th><th>النوع</th><th>الكلي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th></tr></thead>
+      <thead><tr><th>#</th><th>الاسم</th><th>النوع</th><th>الكلي</th><th>المدفوع</th><th>المتبقي</th>${isAdmin ? '<th>الحالة</th>' : ''}</tr></thead>
       <tbody>${P.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.name)}${p.note ? ` <small style="color:var(--red)">(${esc(p.note)})</small>` : ''}</td>
-        <td>${p.type === 'consult' ? 'استشارة' : 'كشف'}</td><td>${p.fee}</td><td>${p.paid}</td><td>${p.fee - p.paid}</td><td>${stTxt(p)}</td></tr>`).join('')}</tbody>
+        <td>${p.type === 'consult' ? 'استشارة' : 'كشف'}</td><td>${p.fee}</td><td>${p.paid}</td><td>${p.fee - p.paid}</td>${isAdmin ? `<td>${stTxt(p)}</td>` : ''}</tr>`).join('')}</tbody>
     </table></div>`;
   document.getElementById('finishModal').classList.add('open');
 }
