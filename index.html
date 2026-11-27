@@ -128,6 +128,35 @@
 
     .toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; z-index: 400; display: none; max-width: 90vw; }
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  
+    .topbar { border-bottom: 3px solid #2aa6a0; }
+    .stat-box { border-top: 3px solid var(--border); }
+    .stat-box:nth-child(1) { border-top-color: var(--primary); }
+    .stat-box:nth-child(2) { border-top-color: var(--amber); }
+    .stat-box:nth-child(3) { border-top-color: var(--green); }
+    .stat-box:nth-child(4) { border-top-color: var(--blue); }
+    .stat-sub { display: block; font-size: 11.5px; color: var(--amber); font-weight: 600; min-height: 15px; }
+    .num-badge { width: 30px; height: 30px; border-radius: 50%; background: #eef2f6; display: flex; align-items: center; justify-content: center; font-size: 13px; min-width: 30px; }
+    .card { box-shadow: 0 1px 2px rgba(16,38,59,.04); }
+    .action-row { display: flex; align-items: center; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+    .action-row .grow { flex: 1; }
+    .vis-btn { border: 1px solid #c8d1da; background: #fff; color: var(--muted); border-radius: 8px; padding: 5px 11px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+    .vis-btn.on { background: var(--primary-light); border-color: #a9d3d6; color: var(--primary-dark); }
+    .due-btn { border: 1px solid #ecd9a4; background: var(--amber-bg); color: var(--amber); border-radius: 8px; padding: 5px 11px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+    .act-link { background: none; border: none; color: var(--primary); font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 6px; text-decoration: none; }
+    .act-link.danger { color: var(--red); }
+    .meta-row { border-top: none; padding-top: 0; margin-top: 8px; }
+    .pay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .remain-hint { font-size: 12.5px; font-weight: 600; margin-top: 6px; min-height: 18px; }
+    .remain-hint.warn { color: var(--amber); } .remain-hint.err { color: var(--red); } .remain-hint.ok { color: var(--green); }
+    .empty { text-align: center; padding: 44px 16px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+    .empty strong { color: var(--ink); font-size: 16px; }
+    .sum-head { font-weight: 700; font-size: 14px; color: var(--primary-dark); margin-bottom: 10px; }
+    .dir-row { display: flex; align-items: center; gap: 8px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+    .dir-info { flex: 1; min-width: 0; }
+    .dir-name { font-weight: 600; font-size: 15px; }
+    .dir-sub { font-size: 12.5px; color: var(--muted); }
+    .q-pill.danger { color: var(--red); border-color: #efc4be; }
   </style>
 </head>
 <body>
@@ -173,7 +202,7 @@
   <div class="stat-box"><div class="stat-num" style="color:var(--primary)" id="stat-total">0</div><div class="stat-lbl">الحالات</div></div>
   <div class="stat-box"><div class="stat-num" style="color:var(--amber)" id="stat-waiting">0</div><div class="stat-lbl">في الانتظار</div></div>
   <div class="stat-box"><div class="stat-num" style="color:var(--green)" id="stat-done">0</div><div class="stat-lbl">تم الكشف</div></div>
-  <div class="stat-box"><div class="stat-num" style="color:var(--blue)" id="stat-total-fee">0</div><div class="stat-lbl">التحصيل (ج)</div></div>
+  <div class="stat-box"><div class="stat-num" style="color:var(--blue)" id="stat-total-fee">0</div><div class="stat-lbl">المحصّل (ج)<span id="stat-remain" class="stat-sub"></span></div></div>
 </div>
 
 <div class="controls">
@@ -186,6 +215,8 @@
     <button class="chip" onclick="setFilter('waiting', this)">في الانتظار </button>
     <button class="chip" onclick="setFilter('inside', this)">عند الدكتور </button>
     <button class="chip" onclick="setFilter('done', this)">تم الكشف</button>
+    <button class="chip" onclick="setFilter('novision', this)">بدون قياس نظر</button>
+    <button class="chip" onclick="setFilter('unpaid', this)">عليهم متبقي</button>
     <button class="chip" onclick="setFilter('exam', this)">كشوفات</button>
     <button class="chip" onclick="setFilter('consult', this)">استشارات</button>
   </div>
@@ -227,7 +258,13 @@
         <button type="button" class="q-pill" id="typeConsultBtn" onclick="selectVisitType('consult', 0)">استشارة (0 ج)</button>
         <button type="button" class="q-pill" id="typeCustomBtn" onclick="selectVisitType('exam', '')">مبلغ مخصص</button>
       </div>
-      <input type="number" class="field-input" id="ptFee" placeholder="المبلغ بالجنيه" style="direction:ltr; text-align:right;" />
+      <div class="pay-grid">
+        <div><label class="field-label">المبلغ الكلي</label>
+          <input type="number" inputmode="numeric" min="0" class="field-input" id="ptFee" oninput="onFeeInput()" style="direction:ltr; text-align:right;" /></div>
+        <div><label class="field-label">المدفوع الآن</label>
+          <input type="number" inputmode="numeric" min="0" class="field-input" id="ptPaid" oninput="onPaidInput()" style="direction:ltr; text-align:right;" /></div>
+      </div>
+      <div class="remain-hint" id="remainHint"></div>
     </div>
 
     <div class="field-group">
@@ -346,8 +383,8 @@ function fail(e) {
   else showToast('خطأ: ' + (msg || 'تعذر الاتصال بالسيرفر').slice(0, 90) + (e && e.code ? ' [' + e.code + ']' : ''));
 }
 function mapVisit(r) {
-  return { id: r.id, name: r.name, phone: r.phone || '', type: r.type, fee: r.fee,
-    payMethod: r.pay_method, note: r.note || '', status: r.status, updatedAt: Date.parse(r.updated_at) || 0 };
+  return { id: r.id, name: r.name, phone: r.phone || '', type: r.type, fee: r.fee, paid: r.paid == null ? r.fee : r.paid,
+    vision: !!r.vision_done, payMethod: r.pay_method, note: r.note || '', status: r.status, updatedAt: Date.parse(r.updated_at) || 0 };
 }
 function mapPatient(r) {
   return { id: r.id, name: r.name, phone: r.phone || '', lastVisit: r.last_visit || '',
@@ -560,6 +597,7 @@ function openPatientModal(id) {
     document.getElementById('ptName').value = pt.name;
     document.getElementById('ptPhone').value = pt.phone || '';
     document.getElementById('ptFee').value = pt.fee;
+    paidTouched = true; document.getElementById('ptPaid').value = pt.paid; updateRemainHint();
     document.getElementById('ptNote').value = pt.note || '';
     selectedType = pt.type || 'exam';
     document.getElementById('typeExamBtn').classList.toggle('active', selectedType === 'exam' && Number(pt.fee) === 200);
@@ -578,8 +616,12 @@ async function savePatient() {
   if (!name) return showToast('اكتب اسم المريض أولاً');
   const phone = document.getElementById('ptPhone').value.trim();
   const fee = Number(document.getElementById('ptFee').value) || 0;
+  const paidRaw = document.getElementById('ptPaid').value;
+  const paid = paidRaw === '' ? fee : Number(paidRaw);
   const note = document.getElementById('ptNote').value.trim();
-  const row = { name, phone, type: selectedType, fee, note, pay_method: fee === 0 ? 'آجل / مجاني' : selectedPay };
+  if (fee < 0 || paid < 0) return showToast('المبلغ غير صحيح');
+  if (paid > fee) return showToast('المدفوع أكبر من المبلغ الكلي');
+  const row = { name, phone, type: selectedType, fee, paid, note, pay_method: paid === 0 ? 'آجل / مجاني' : selectedPay };
 
   saving = true;
   try {
@@ -589,7 +631,8 @@ async function savePatient() {
       showToast('تم تسجيل الحجز');
     } else {
       const pt = db.patients.find(p => p.id === editingId);
-      if (!isAdmin && pt && Number(pt.fee) !== fee) return showToast('تعديل المبلغ متاح للمدير فقط');
+      if (!isAdmin && pt && Number(pt.fee) !== fee) return showToast('تعديل المبلغ الكلي متاح للمدير فقط');
+      if (!isAdmin && pt && paid < pt.paid) return showToast('تقليل المدفوع متاح للمدير فقط');
       const { data, error } = await sb.from('visits').update(row).eq('id', editingId).select('id');
       if (error) return fail(error);
       if (!data.length) return showToast('غير مسموح بالتعديل');
@@ -599,6 +642,28 @@ async function savePatient() {
     await refreshAll();
   } finally { saving = false; }
 }
+
+async function collectRemaining(id) {
+  const pt = db.patients.find(p => p.id === id);
+  if (!pt || pt.fee <= pt.paid) return;
+  if (!confirm(`تحصيل المتبقي (${pt.fee - pt.paid} ج) من ${pt.name}؟`)) return;
+  const { data, error } = await sb.from('visits').update({ paid: pt.fee }).eq('id', id).select('id');
+  if (error) return fail(error);
+  if (!data.length) return showToast('غير مسموح');
+  showToast('تم تحصيل المتبقي');
+  await refreshAll();
+}
+
+async function toggleVision(id) {
+  const pt = db.patients.find(p => p.id === id);
+  if (!pt) return;
+  const { data, error } = await sb.from('visits').update({ vision_done: !pt.vision }).eq('id', id).select('id');
+  if (error) return fail(error);
+  if (!data.length) return showToast('غير مسموح');
+  pt.vision = !pt.vision; render();
+}
+
+function deleteVisitQuick(id) { editingId = id; deletePatient(); }
 
 async function deletePatient() {
   if (!isAdmin) return showToast('الحذف للمدير فقط');
@@ -633,34 +698,30 @@ function renderList() {
     inside: { text: 'عند الدكتور', cls: 'inside' },
     done: { text: 'تم الكشف', cls: 'done' }
   };
-
   const filtered = sess.patients.filter((p, idx) => {
     if (searchQuery) {
       const mName = p.name.toLowerCase().includes(searchQuery);
       const mPhone = (p.phone || '').includes(searchQuery);
-      const mTurn = String(idx + 1) === searchQuery;
-      if (!mName && !mPhone && !mTurn) return false;
+      if (!mName && !mPhone && String(idx + 1) !== searchQuery) return false;
     }
     if (currentFilter === 'waiting') return p.status === 'waiting';
     if (currentFilter === 'inside') return p.status === 'inside';
     if (currentFilter === 'done') return p.status === 'done';
     if (currentFilter === 'exam') return p.type !== 'consult';
     if (currentFilter === 'consult') return p.type === 'consult';
+    if (currentFilter === 'novision') return !p.vision;
+    if (currentFilter === 'unpaid') return p.fee > p.paid;
     return true;
   });
-
   if (!filtered.length) {
-    container.innerHTML = `<div style="text-align:center; padding:38px 16px; color:var(--muted); font-weight:600;">
-      قائمة <strong>${esc(sess.label)}</strong> فارغة حالياً<br><small>اضغط "+ حجز / تسجيل مريض" لإضافة أول حالة</small>
-    </div>`;
+    container.innerHTML = `<div class="empty"><strong>${esc(sess.label)}</strong><span>${sess.patients.length ? 'لا توجد نتائج مطابقة' : 'لا توجد حجوزات بعد — اضغط "حجز جديد" لإضافة أول حالة'}</span></div>`;
     return;
   }
-
   container.innerHTML = filtered.map(p => {
     const turnNum = sess.patients.indexOf(p) + 1;
     const st = statusLabels[p.status] || statusLabels.waiting;
     const cardCls = p.status === 'inside' ? 'card status-inside' : (p.status === 'done' ? 'card status-done' : 'card');
-    const isConsult = p.type === 'consult';
+    const rest = p.fee - p.paid;
     return `
       <div class="${cardCls}">
         <div class="card-top">
@@ -674,15 +735,20 @@ function renderList() {
           <button class="status-btn ${st.cls}" onclick="cycleStatus('${p.id}')">${st.text}</button>
         </div>
         <div class="meta-row">
-          <span class="badge ${isConsult ? 'badge-type-consult' : 'badge-type-exam'}">${isConsult ? 'استشارة' : 'كشف'}</span>
-          <span class="badge badge-fee">${p.fee} ج</span>
-          ${p.fee > 0 ? `<span class="badge badge-pay">${esc(p.payMethod || 'كاش')}</span>` : ''}
+          <span class="badge ${p.type === 'consult' ? 'badge-type-consult' : 'badge-type-exam'}">${p.type === 'consult' ? 'استشارة' : 'كشف'}</span>
+          ${p.fee > 0 ? `<span class="badge badge-fee">${p.paid} / ${p.fee} ج</span>` : `<span class="badge">بدون مبلغ</span>`}
+          ${p.paid > 0 ? `<span class="badge">${esc(p.payMethod || 'كاش')}</span>` : ''}
           ${p.note ? `<span class="badge badge-note">${esc(p.note)}</span>` : ''}
-          ${p.phone ? `<a class="badge badge-call" href="tel:${esc(p.phone)}" onclick="event.stopPropagation()"></a>` : ''}
-          <span class="badge badge-edit" onclick="openPatientModal('${p.id}')">تعديل</span>
         </div>
-      </div>
-    `;
+        <div class="action-row">
+          <button class="vis-btn ${p.vision ? 'on' : ''}" onclick="toggleVision('${p.id}')">${p.vision ? 'تم قياس النظر' : 'قياس النظر: لم يتم'}</button>
+          ${rest > 0 ? `<button class="due-btn" onclick="collectRemaining('${p.id}')">تحصيل المتبقي ${rest} ج</button>` : ''}
+          <span class="grow"></span>
+          ${p.phone ? `<a class="act-link" href="tel:${esc(p.phone)}">اتصال</a>` : ''}
+          <button class="act-link" onclick="openPatientModal('${p.id}')">تعديل</button>
+          ${isAdmin ? `<button class="act-link danger" onclick="deleteVisitQuick('${p.id}')">حذف</button>` : ''}
+        </div>
+      </div>`;
   }).join('');
 }
 
@@ -693,7 +759,10 @@ function render() {
   document.getElementById('stat-total').textContent = sess.patients.length;
   document.getElementById('stat-waiting').textContent = sess.patients.filter(p => p.status === 'waiting').length;
   document.getElementById('stat-done').textContent = sess.patients.filter(p => p.status === 'done').length;
-  document.getElementById('stat-total-fee').textContent = sess.patients.reduce((s, p) => s + (Number(p.fee) || 0), 0);
+  const paidSum = sess.patients.reduce((s, p) => s + (Number(p.paid) || 0), 0);
+  const feeSum = sess.patients.reduce((s, p) => s + (Number(p.fee) || 0), 0);
+  document.getElementById('stat-total-fee').textContent = paidSum;
+  document.getElementById('stat-remain').textContent = feeSum > paidSum ? 'متبقي ' + (feeSum - paidSum) : '';
   renderList();
 }
 
@@ -741,6 +810,18 @@ function getNextClinicDates() {
   return results;
 }
 
+let paidTouched = false;
+function updateRemainHint() {
+  const f = Number(document.getElementById('ptFee').value) || 0;
+  const p = Number(document.getElementById('ptPaid').value) || 0;
+  const el = document.getElementById('remainHint');
+  if (p > f) { el.textContent = 'المدفوع أكبر من المبلغ الكلي'; el.className = 'remain-hint err'; }
+  else if (f > 0 && p < f) { el.textContent = 'المتبقي ' + (f - p) + ' ج — يتحصّل لاحقاً'; el.className = 'remain-hint warn'; }
+  else { el.textContent = f > 0 ? 'مدفوع بالكامل' : ''; el.className = 'remain-hint ok'; }
+}
+function onFeeInput() { if (!paidTouched) document.getElementById('ptPaid').value = document.getElementById('ptFee').value; updateRemainHint(); }
+function onPaidInput() { paidTouched = true; updateRemainHint(); }
+
 function selectVisitType(type, defaultFee) {
   selectedType = type;
   document.getElementById('typeExamBtn').classList.toggle('active', type === 'exam' && defaultFee === 200);
@@ -748,6 +829,7 @@ function selectVisitType(type, defaultFee) {
   document.getElementById('typeCustomBtn').classList.toggle('active', defaultFee === '');
   if (defaultFee !== '') {
     document.getElementById('ptFee').value = defaultFee;
+    paidTouched = false; document.getElementById('ptPaid').value = defaultFee; updateRemainHint();
     if (defaultFee === 0) {
       selectPayMethod('آجل / مجاني', document.querySelector('[data-pay="آجل / مجاني"]'));
     } else if (selectedPay === 'آجل / مجاني') {
@@ -755,6 +837,7 @@ function selectVisitType(type, defaultFee) {
     }
   } else {
     document.getElementById('ptFee').value = '';
+    paidTouched = false; document.getElementById('ptPaid').value = ''; updateRemainHint();
     document.getElementById('ptFee').focus();
   }
 }
@@ -814,34 +897,24 @@ function pickAC(i) {
 
 function buildReportText() {
   const sess = getCurrentSession();
-  const exams = sess.patients.filter(p => p.type !== 'consult');
-  const consults = sess.patients.filter(p => p.type === 'consult');
-  const cashTotal = sess.patients.filter(p => (p.payMethod || 'كاش') === 'كاش').reduce((s, p) => s + (Number(p.fee) || 0), 0);
-  const instaTotal = sess.patients.filter(p => p.payMethod === 'إنستاباي').reduce((s, p) => s + (Number(p.fee) || 0), 0);
-  const grandTotal = sess.patients.reduce((s, p) => s + (Number(p.fee) || 0), 0);
-  const doneCount = sess.patients.filter(p => p.status === 'done').length;
-
-  let lines = [
-    `📊 *ملخص تقفيل ${db.clinicTitle}*`,
-    `📅 اليوم: ${sess.label}`,
+  const P = sess.patients;
+  const sum = (arr, k) => arr.reduce((t, p) => t + (Number(p[k]) || 0), 0);
+  const due = sum(P, 'fee'), got = sum(P, 'paid');
+  const cash = sum(P.filter(p => (p.payMethod || 'كاش') === 'كاش'), 'paid');
+  const insta = sum(P.filter(p => p.payMethod === 'إنستاباي'), 'paid');
+  const exams = P.filter(p => p.type !== 'consult'), consults = P.filter(p => p.type === 'consult');
+  const line = (p, i) => `${i + 1}. ${p.status === 'done' ? '✅' : '⏳'} ${p.name} — ${p.paid}/${p.fee} ج${p.fee > p.paid ? ' (متبقي ' + (p.fee - p.paid) + ')' : ''}${p.note ? ' [' + p.note + ']' : ''}`;
+  const lines = [
+    `*ملخص ${db.clinicTitle}*`,
+    `اليوم: ${sess.label}`,
     `━━━━━━━━━━━━━━━`,
-    `💰 *الإيراد الكلي: ${grandTotal} جنيه*`,
-    `💵 كاش: ${cashTotal} ج | 📱 إنستاباي: ${instaTotal} ج`,
-    `👥 الحالات: ${sess.patients.length} (كشف: ${exams.length} | استشارة: ${consults.length})`,
-    `✅ تم الكشف: ${doneCount} حالة`,
+    `*المحصّل: ${got} جنيه* (من ${due})`,
+    `كاش: ${cash} ج | إنستاباي: ${insta} ج | متبقي: ${due - got} ج`,
+    `الحالات: ${P.length} (كشف ${exams.length} | استشارة ${consults.length}) — تم الكشف: ${P.filter(p => p.status === 'done').length}`,
     `━━━━━━━━━━━━━━━`,
-    `*أولاً: الكشوفات (${exams.length})*`
+    `*الكشوفات (${exams.length})*`, ...exams.map(line)
   ];
-  exams.forEach((p, idx) => {
-    const st = p.status === 'done' ? '✅' : '⏳';
-    lines.push(`${idx + 1}. ${st} ${p.name} — ${p.fee} ج (${p.payMethod || 'كاش'})${p.note ? ' [' + p.note + ']' : ''}`);
-  });
-  if (consults.length) {
-    lines.push(`\n*ثانياً: الاستشارات (${consults.length})*`);
-    consults.forEach((p, idx) => {
-      lines.push(`${idx + 1}. ${p.status === 'done' ? '✅' : '⏳'} ${p.name}${p.note ? ' [' + p.note + ']' : ''}`);
-    });
-  }
+  if (consults.length) lines.push(`\n*الاستشارات (${consults.length})*`, ...consults.map(line));
   return lines.join('\n');
 }
 
@@ -856,93 +929,60 @@ function copyTextReport() {
 function exportSessionExcel() {
   if (typeof XLSX === 'undefined') return showToast('تأكد من الاتصال بالإنترنت للتصدير');
   const sess = getCurrentSession();
-  const statusTxt = p => p.status === 'done' ? 'تم الكشف' : (p.status === 'inside' ? 'عند الدكتور' : 'في الانتظار');
-  const num = p => Number(p.fee) || 0;
-  const exams = sess.patients.filter(p => p.type !== 'consult');
-  const consults = sess.patients.filter(p => p.type === 'consult');
-  const sum = arr => arr.reduce((t, p) => t + num(p), 0);
-  const cashTotal = sum(sess.patients.filter(p => (p.payMethod || 'كاش') === 'كاش'));
-  const instaTotal = sum(sess.patients.filter(p => p.payMethod === 'إنستاباي'));
-  const grandTotal = sum(sess.patients);
-
-  const examRows = [['م', 'اسم المريض', 'رقم التليفون', 'المبلغ (ج)', 'طريقة الدفع', 'الحالة', 'ملاحظات']];
-  exams.forEach((p, i) => examRows.push([i + 1, p.name, p.phone || '', num(p), p.payMethod || 'كاش', statusTxt(p), p.note || '']));
-  examRows.push(['', 'الإجمالي', '', sum(exams), '', '', '']);
-
-  const consultRows = [['م', 'اسم المريض', 'رقم التليفون', 'المبلغ (ج)', 'الحالة', 'ملاحظات']];
-  consults.forEach((p, i) => consultRows.push([i + 1, p.name, p.phone || '', num(p), statusTxt(p), p.note || '']));
-
+  const P = sess.patients;
+  const stTxt = p => p.status === 'done' ? 'تم الكشف' : (p.status === 'inside' ? 'عند الدكتور' : 'في الانتظار');
+  const sum = (arr, k) => arr.reduce((t, p) => t + (Number(p[k]) || 0), 0);
+  const exams = P.filter(p => p.type !== 'consult'), consults = P.filter(p => p.type === 'consult');
+  const head = ['م', 'اسم المريض', 'رقم التليفون', 'المبلغ الكلي', 'المدفوع', 'المتبقي', 'طريقة الدفع', 'قياس النظر', 'الحالة', 'ملاحظات'];
+  const row = (p, i) => [i + 1, p.name, p.phone || '', p.fee, p.paid, p.fee - p.paid, p.payMethod || '', p.vision ? 'تم' : 'لم يتم', stTxt(p), p.note || ''];
+  const examRows = [head, ...exams.map(row), ['', 'الإجمالي', '', sum(exams, 'fee'), sum(exams, 'paid'), sum(exams, 'fee') - sum(exams, 'paid'), '', '', '', '']];
+  const consultRows = [head, ...consults.map(row)];
+  const due = sum(P, 'fee'), got = sum(P, 'paid');
   const summaryRows = [
-    ['ملخص اليوم', ''],
-    ['العيادة', db.clinicTitle],
-    ['اليوم', sess.label],
-    ['', ''],
-    ['عدد الكشوفات', exams.length],
-    ['عدد الاستشارات', consults.length],
-    ['إجمالي الحالات', sess.patients.length],
-    ['حالات تم كشفها', sess.patients.filter(p => p.status === 'done').length],
-    ['', ''],
-    ['إجمالي الكاش (ج)', cashTotal],
-    ['إجمالي إنستاباي (ج)', instaTotal],
-    ['آجل / مجاني (ج)', grandTotal - cashTotal - instaTotal],
-    ['إجمالي الإيراد (ج)', grandTotal]
+    ['ملخص اليوم', ''], ['العيادة', db.clinicTitle], ['اليوم', sess.label], ['', ''],
+    ['عدد الكشوفات', exams.length], ['عدد الاستشارات', consults.length], ['إجمالي الحالات', P.length],
+    ['حالات تم كشفها', P.filter(p => p.status === 'done').length], ['تم قياس نظرهم', P.filter(p => p.vision).length], ['', ''],
+    ['إجمالي المستحق (ج)', due], ['المحصّل فعلياً (ج)', got],
+    ['منه كاش (ج)', sum(P.filter(p => (p.payMethod || 'كاش') === 'كاش'), 'paid')],
+    ['منه إنستاباي (ج)', sum(P.filter(p => p.payMethod === 'إنستاباي'), 'paid')],
+    ['المتبقي (ج)', due - got]
   ];
-
-  const mk = (rows, widths) => {
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = widths.map(w => ({ wch: w }));
-    return ws;
-  };
+  const mk = (rows, widths) => { const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = widths.map(w => ({ wch: w })); return ws; };
+  const w = [5, 24, 16, 13, 11, 11, 14, 12, 14, 24];
   const wb = XLSX.utils.book_new();
   wb.Workbook = { Views: [{ RTL: true }] };
-  XLSX.utils.book_append_sheet(wb, mk(examRows, [5, 24, 16, 12, 14, 14, 24]), 'الكشوفات');
-  XLSX.utils.book_append_sheet(wb, mk(consultRows, [5, 24, 16, 12, 14, 24]), 'الاستشارات');
-  XLSX.utils.book_append_sheet(wb, mk(summaryRows, [24, 26]), 'الملخص');
-  XLSX.writeFile(wb, `عيادة_${sess.label.replace(/[\/\\:*?"<>|]/g, '-')}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, mk(examRows, w), 'الكشوفات');
+  XLSX.utils.book_append_sheet(wb, mk(consultRows, w), 'الاستشارات');
+  XLSX.utils.book_append_sheet(wb, mk(summaryRows, [26, 28]), 'الملخص');
+  XLSX.writeFile(wb, 'عيادة_' + sess.id + '.xlsx');
   showToast('تم تحميل ملف الإكسيل');
 }
 
 function openFinishDayModal() {
   const sess = getCurrentSession();
-  const exams = sess.patients.filter(p => p.type !== 'consult');
-  const consults = sess.patients.filter(p => p.type === 'consult');
-  const doneCount = sess.patients.filter(p => p.status === 'done').length;
-  const cashTotal = sess.patients.filter(p => (p.payMethod || 'كاش') === 'كاش').reduce((s, p) => s + (Number(p.fee) || 0), 0);
-  const instaTotal = sess.patients.filter(p => p.payMethod === 'إنستاباي').reduce((s, p) => s + (Number(p.fee) || 0), 0);
-  const grandTotal = sess.patients.reduce((s, p) => s + (Number(p.fee) || 0), 0);
-  const otherTotal = grandTotal - cashTotal - instaTotal;
-
-  let html = `
-    <div style="font-weight:800; font-size:14px; color:var(--primary-dark); margin-bottom:10px;">
-      ${esc(db.clinicTitle)} — ${esc(sess.label)}
-    </div>
+  const P = sess.patients;
+  const sum = (arr, k) => arr.reduce((t, p) => t + (Number(p[k]) || 0), 0);
+  const due = sum(P, 'fee'), got = sum(P, 'paid');
+  const cash = sum(P.filter(p => (p.payMethod || 'كاش') === 'كاش'), 'paid');
+  const insta = sum(P.filter(p => p.payMethod === 'إنستاباي'), 'paid');
+  const exams = P.filter(p => p.type !== 'consult').length, consults = P.length - exams;
+  const stTxt = p => p.status === 'done' ? 'تم' : (p.status === 'inside' ? 'بالداخل' : 'انتظار');
+  document.getElementById('summaryContent').innerHTML = `
+    <div class="sum-head">${esc(db.clinicTitle)} — ${esc(sess.label)}</div>
     <div class="summary-grid">
-      <div class="sum-card"><div class="val">${grandTotal} ج</div><div class="lbl">إجمالي الإيراد اليومي</div></div>
-      <div class="sum-card"><div class="val">${doneCount} / ${sess.patients.length}</div><div class="lbl">حالات تم كشفها</div></div>
-      <div class="sum-card"><div class="val" style="color:#15803d;">${cashTotal} ج</div><div class="lbl">إجمالي الكاش</div></div>
-      <div class="sum-card"><div class="val" style="color:#1d4ed8;">${instaTotal} ج</div><div class="lbl">إجمالي إنستاباي</div></div>
+      <div class="sum-card"><div class="val">${got} ج</div><div class="lbl">المحصّل فعلياً</div></div>
+      <div class="sum-card"><div class="val" style="color:var(--amber);">${due - got} ج</div><div class="lbl">متبقي لم يُحصَّل</div></div>
+      <div class="sum-card"><div class="val">${cash} ج</div><div class="lbl">كاش</div></div>
+      <div class="sum-card"><div class="val">${insta} ج</div><div class="lbl">إنستاباي</div></div>
+      <div class="sum-card"><div class="val">${P.filter(p => p.status === 'done').length} / ${P.length}</div><div class="lbl">تم كشفهم</div></div>
+      <div class="sum-card"><div class="val">${P.filter(p => p.vision).length} / ${P.length}</div><div class="lbl">تم قياس نظرهم</div></div>
     </div>
-    <div class="summary-grid">
-      <div class="sum-card"><div class="val">${exams.length} / ${consults.length}</div><div class="lbl">كشوفات / استشارات</div></div>
-      <div class="sum-card"><div class="val" style="color:#854d0e;">${otherTotal} ج</div><div class="lbl">آجل / مجاني</div></div>
-    </div>
-    <table class="summary-table">
-      <thead><tr><th>#</th><th>الاسم</th><th>النوع</th><th>المبلغ</th><th>الدفع</th><th>الحالة</th></tr></thead>
-      <tbody>
-        ${sess.patients.map((p, i) => `
-          <tr>
-            <td>${i + 1}</td>
-            <td>${esc(p.name)}${p.note ? ` <small style="color:#be123c">(${esc(p.note)})</small>` : ''}</td>
-            <td>${p.type === 'consult' ? 'استشارة' : 'كشف'}</td>
-            <td>${p.fee} ج</td>
-            <td>${esc(p.payMethod || 'كاش')}</td>
-            <td>${p.status === 'done' ? 'تم' : (p.status === 'inside' ? 'بالداخل' : 'انتظار')}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
-  document.getElementById('summaryContent').innerHTML = html;
+    <div class="modal-note">${exams} كشف · ${consults} استشارة · إجمالي المستحق ${due} ج</div>
+    <div style="overflow-x:auto;"><table class="summary-table">
+      <thead><tr><th>#</th><th>الاسم</th><th>النوع</th><th>الكلي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th></tr></thead>
+      <tbody>${P.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.name)}${p.note ? ` <small style="color:var(--red)">(${esc(p.note)})</small>` : ''}</td>
+        <td>${p.type === 'consult' ? 'استشارة' : 'كشف'}</td><td>${p.fee}</td><td>${p.paid}</td><td>${p.fee - p.paid}</td><td>${stTxt(p)}</td></tr>`).join('')}</tbody>
+    </table></div>`;
   document.getElementById('finishModal').classList.add('open');
 }
 
@@ -951,15 +991,30 @@ function renderDirectory() {
   const list = db.directory.map((d, i) => ({ d, i }))
     .filter(({ d }) => d.name.toLowerCase().includes(q) || (d.phone && d.phone.includes(q)));
   document.getElementById('dirCount').textContent = db.directory.length;
-  document.getElementById('directoryList').innerHTML = list.map(({ d, i }) => `
-    <div style="padding:9px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <div style="font-weight:700; font-size:14px;">${esc(d.name)}</div>
-        <div style="font-size:11.5px; color:var(--muted);">${esc(d.phone) || 'بدون رقم'} • آخر زيارة: ${esc(d.lastVisit) || '-'}</div>
+  document.getElementById('directoryList').innerHTML = list.length ? list.map(({ d, i }) => `
+    <div class="dir-row">
+      <div class="dir-info">
+        <div class="dir-name">${esc(d.name)}</div>
+        <div class="dir-sub">${esc(d.phone) || 'بدون رقم'} · زيارات: ${d.visitsCount} · آخر زيارة: ${esc(d.lastVisit) || '-'}</div>
       </div>
-      <button class="q-pill" style="background:var(--primary-light); color:var(--primary);" onclick="bookFromDirectory(${i})">+ حجز</button>
-    </div>
-  `).join('');
+      <button class="q-pill" onclick="bookFromDirectory(${i})">حجز</button>
+      ${isAdmin ? `<button class="q-pill danger" onclick="deleteFromDirectory(${i})">حذف</button>` : ''}
+    </div>`).join('') : '<div class="empty"><span>لا يوجد مرضى مطابقون</span></div>';
+}
+
+async function deleteFromDirectory(i) {
+  if (!isAdmin) return;
+  const d = db.directory[i];
+  if (!d) return;
+  if (!confirm('حذف "' + d.name + '" من سجل المرضى مع كل حجوزاته السابقة؟\nلا يمكن التراجع عن ده.')) return;
+  let q = sb.from('visits').delete().eq('name', d.name);
+  q = d.phone ? q.eq('phone', d.phone) : q.eq('phone', '');
+  const r1 = await q.select('id');
+  if (r1.error) return fail(r1.error);
+  const r2 = await sb.from('patients').delete().eq('id', d.id).select('id');
+  if (r2.error) return fail(r2.error);
+  showToast('تم حذف المريض وحجوزاته');
+  await refreshAll();
 }
 
 function bookFromDirectory(i) {
