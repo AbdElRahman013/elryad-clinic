@@ -398,17 +398,28 @@ function showLogin(msg) {
 }
 function hideLogin() { document.getElementById('loginOverlay').style.display = 'none'; }
 
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('TIMEOUT')), ms))]);
+}
+
+let loggingIn = false;
 async function doLogin() {
+  if (loggingIn) return;
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPass').value;
   if (!email || !password) return showLogin('اكتب الإيميل وكلمة السر');
+  loggingIn = true;
   document.getElementById('loginMsg').textContent = 'جاري الدخول...';
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) {
-    const bad = /invalid login|invalid credentials/i.test(error.message || '');
-    return showLogin(bad ? 'الإيميل أو كلمة السر غير صحيحة' : 'خطأ في الدخول: ' + (error.message || '') + ' (' + (error.status || error.code || '') + ')');
-  }
-  await afterLogin(data.user);
+  try {
+    const { data, error } = await withTimeout(sb.auth.signInWithPassword({ email, password }), 20000);
+    if (error) {
+      const bad = /invalid login|invalid credentials/i.test(error.message || '');
+      return showLogin(bad ? 'الإيميل أو كلمة السر غير صحيحة' : 'خطأ في الدخول: ' + (error.message || '') + ' (' + (error.status || error.code || '') + ')');
+    }
+    await afterLogin(data.user);
+  } catch (e) {
+    showLogin('الاتصال بطيء أو متقطع — جرّب تاني، أو بدّل بين الواي فاي وبيانات الموبايل');
+  } finally { loggingIn = false; }
 }
 
 async function doLogout() {
@@ -420,7 +431,10 @@ async function doLogout() {
 }
 
 async function afterLogin(user) {
-  const { data: prof, error } = await sb.from('profiles').select('role, full_name').eq('id', user.id).maybeSingle();
+  let prof, error;
+  try {
+    ({ data: prof, error } = await withTimeout(sb.from('profiles').select('role, full_name').eq('id', user.id).maybeSingle(), 20000));
+  } catch (e) { return showLogin('تعذر تحميل بيانات الحساب — الاتصال بطيء، جرّب تاني'); }
   if (error) { showLogin('خطأ في قراءة الصلاحيات: ' + (error.message || '') + ' [' + (error.code || '') + ']'); return; }
   if (!prof) {
     await sb.auth.signOut();
@@ -432,6 +446,7 @@ async function afterLogin(user) {
   const saved = localStorage.getItem('clinic_active_day');
   db.activeDay = saved || getNextClinicDates()[0].id;
   updateRoleUI();
+  document.getElementById('patientList').innerHTML = '<div class="empty"><span>جاري تحميل البيانات...</span></div>';
   await refreshAll();
   subscribeRealtime();
 }
@@ -459,9 +474,24 @@ async function refreshAll() {
     render();
   } catch (e) { fail(e); }
 }
-function scheduleRefresh() {
+let pendingKinds = new Set();
+function scheduleRefresh(kind) {
+  pendingKinds.add(typeof kind === 'string' ? kind : 'all');
   clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(() => { if (me) refreshAll(); }, 250);
+  refreshTimer = setTimeout(async () => {
+    if (!me) return;
+    const kinds = pendingKinds; pendingKinds = new Set();
+    try {
+      if (kinds.has('all')) { await Promise.all([loadDays(), loadPatients(), loadDirectory()]); }
+      else {
+        const jobs = [];
+        if (kinds.has('visits')) jobs.push(loadDays(), loadPatients());
+        if (kinds.has('dir')) jobs.push(loadDirectory());
+        await Promise.all(jobs);
+      }
+      render();
+    } catch (e) { fail(e); }
+  }, 250);
 }
 
 /* ==================== REALTIME ==================== */
@@ -473,11 +503,11 @@ function setConn(ok) {
 function subscribeRealtime() {
   if (channel) sb.removeChannel(channel);
   channel = sb.channel('clinic-live')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, scheduleRefresh)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, scheduleRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, () => scheduleRefresh('visits'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => scheduleRefresh('dir'))
     .subscribe(status => {
       setConn(status === 'SUBSCRIBED');
-      if (status === 'SUBSCRIBED') scheduleRefresh();
+      if (status === 'SUBSCRIBED') scheduleRefresh('visits');
     });
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && me) scheduleRefresh(); });
@@ -773,9 +803,14 @@ function render() {
     return showLogin('لازم تحط SUPABASE_URL و SUPABASE_ANON_KEY في أول السكربت');
   }
   if (typeof supabase === 'undefined') return showLogin('تعذر تحميل مكتبة Supabase — تأكد من الإنترنت');
-  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) await afterLogin(session.user); else showLogin('');
+  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false,
+            lock: async (name, acquireTimeout, fn) => await fn() }
+  });
+  try {
+    const { data: { session } } = await withTimeout(sb.auth.getSession(), 8000);
+    if (session) await afterLogin(session.user); else showLogin('');
+  } catch (e) { showLogin(''); }
 })();
 
 function showToast(msg) {
