@@ -567,14 +567,20 @@ function updateRoleUI() {
 }
 
 /* ==================== CLINIC DAYS ==================== */
+const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 function renderDaySelector() {
   const map = new Map();
   db.days.forEach(d => map.set(d.day, d.n));
   getNextClinicDates().forEach(u => { if (!map.has(u.id)) map.set(u.id, 0); });
   map.set(db.activeDay, db.patients.length);
-  const keys = [...map.keys()].sort().reverse();
-  document.getElementById('daySelector').innerHTML = keys.map(k =>
-    `<option value="${k}" ${k === db.activeDay ? 'selected' : ''}>${esc(dayLabel(k))} (${map.get(k)})</option>`).join('');
+  const groups = {};
+  [...map.keys()].sort().reverse().forEach(k => { (groups[k.slice(0, 7)] = groups[k.slice(0, 7)] || []).push(k); });
+  document.getElementById('daySelector').innerHTML = Object.keys(groups).sort().reverse().map(g => {
+    const [y, mo] = g.split('-');
+    const total = groups[g].reduce((t, k) => t + map.get(k), 0);
+    return `<optgroup label="${MONTHS_AR[+mo - 1]} ${y} — ${total} حالة">` +
+      groups[g].map(k => `<option value="${k}" ${k === db.activeDay ? 'selected' : ''}>${esc(dayLabel(k))} (${map.get(k)})</option>`).join('') + '</optgroup>';
+  }).join('');
 }
 
 async function switchSession(id) {
