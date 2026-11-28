@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#10263b" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <title>حجوزات عيادة د. حازم عبد الحميد</title>
@@ -170,6 +174,32 @@
     .summary-table tr.rowlink:hover { background: var(--primary-light); }
     .summary-table tr.cur td { font-weight: 700; color: var(--primary-dark); }
     .summary-table tr.total td { font-weight: 700; border-top: 2px solid var(--ink); }
+  
+    .controls { top: var(--topbar-h, 74px); }
+    .chip, .q-pill, .vis-btn, .due-btn { min-height: 36px; }
+    @media (pointer: coarse) {
+      .field-input, .search-input, .day-select { font-size: 16px; }
+      .act-link { padding: 9px 11px; }
+      .status-btn { min-height: 40px; }
+    }
+    @media (max-width: 360px) { .stat-num { font-size: 19px; } .clinic-title { font-size: 16px; } .icon-btn { padding: 6px 8px; } }
+    @media (min-width: 900px) {
+      :root { --pad: max(24px, calc((100vw - 1080px) / 2)); }
+      .list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+      .list .empty { grid-column: 1 / -1; }
+      .stats-bar { gap: 12px; } .stat-num { font-size: 26px; }
+      .modal { max-width: 540px; } .modal.wide { max-width: 780px; }
+    }
+    @media (min-width: 1280px) {
+      :root { --pad: max(32px, calc((100vw - 1260px) / 2)); }
+      .list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+  
+    .banner { padding: 9px var(--pad); font-size: 13px; font-weight: 600; }
+    .banner.off { background: #fdecea; color: #9b2c20; }
+    .banner.warn { background: var(--amber-bg); color: var(--amber); }
+    .link-btn { background: none; border: none; color: var(--primary); font-weight: 700; font-size: 13px; cursor: pointer; padding: 6px 0; text-decoration: underline; }
+    .login-card .link-btn { display: block; margin: 12px auto 0; }
   </style>
 </head>
 <body>
@@ -183,6 +213,7 @@
     <div class="field-group"><label class="field-label">كلمة السر</label>
       <input type="password" class="field-input" id="loginPass" autocomplete="current-password" style="direction:ltr; text-align:right;" onkeydown="if(event.key==='Enter')doLogin()" /></div>
     <button class="btn-save" onclick="doLogin()">دخول</button>
+    <button class="link-btn" onclick="forgotPassword()">نسيت كلمة السر؟</button>
     <div id="loginMsg" class="login-msg"></div>
   </div>
 </div>
@@ -204,6 +235,8 @@
 </div>
 
 <!-- Clinic Day Selector (Saturday / Wednesday) -->
+<div id="offlineBanner" class="banner off" style="display:none;">لا يوجد اتصال بالإنترنت — التغييرات لن تُحفظ لحد ما يرجع</div>
+<div id="backupBanner" class="banner warn admin-only" style="display:none;"></div>
 <div class="day-bar">
   <div class="day-select-wrap">
     <span class="day-lbl">يوم العيادة</span>
@@ -337,6 +370,22 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="collectModal" onclick="closeModalOnBg(event, 'collectModal')">
+  <div class="modal"><div class="modal-header"><h3 class="modal-title" id="collectTitle"></h3><button class="close-btn" onclick="closeModal('collectModal')">إغلاق</button></div>
+    <p class="modal-note">اختار طريقة دفع المتبقي:</p>
+    <div class="pay-grid"><button class="btn-save" onclick="doCollect('كاش')">كاش</button><button class="btn-save" style="background:var(--ink);" onclick="doCollect('إنستاباي')">إنستاباي</button></div></div>
+</div>
+<div class="modal-backdrop" id="passModal" onclick="closeModalOnBg(event, 'passModal')">
+  <div class="modal"><div class="modal-header"><h3 class="modal-title">كلمة سر جديدة</h3><button class="close-btn" onclick="closeModal('passModal')">إغلاق</button></div>
+    <div class="field-group"><label class="field-label">كلمة السر الجديدة (6 أحرف على الأقل)</label>
+      <input type="password" class="field-input" id="newPass" autocomplete="new-password" style="direction:ltr; text-align:right;" /></div>
+    <button class="btn-save" onclick="saveNewPassword()">حفظ</button></div>
+</div>
+<div class="modal-backdrop" id="auditModal" onclick="closeModalOnBg(event, 'auditModal')">
+  <div class="modal wide"><div class="modal-header"><h3 class="modal-title">سجل التعديلات المالية</h3><button class="close-btn" onclick="closeModal('auditModal')">إغلاق</button></div>
+    <div id="auditBody"><div class="empty"><span>جاري التحميل...</span></div></div></div>
+</div>
+
 <!-- Reports Modal (admin) -->
 <div class="modal-backdrop" id="reportsModal" onclick="closeModalOnBg(event, 'reportsModal')">
   <div class="modal wide">
@@ -397,6 +446,10 @@
     <div id="adminToolsSection" style="display:flex; flex-direction:column; gap:9px;">
       <button class="btn-outline" onclick="refreshAll(); showToast('تم التحديث');">تحديث البيانات</button>
       <button class="btn-outline" onclick="doLogout()">تسجيل الخروج</button>
+      <button class="btn-outline admin-only" onclick="moveDay()">نقل حجوزات اليوم لتاريخ آخر</button>
+      <button class="btn-outline admin-only" onclick="openAudit()">سجل التعديلات المالية</button>
+      <button class="btn-outline" onclick="closeModal('toolsModal'); document.getElementById('newPass').value=''; document.getElementById('passModal').classList.add('open');">تغيير كلمة السر</button>
+      <button class="btn-outline admin-only" onclick="exportFullBackup()">نسخة احتياطية كاملة (إكسيل)</button>
       <button class="btn-outline admin-only" onclick="openImportModal()">استيراد مرضى من ملاحظات</button>
       <button class="btn-danger" id="clearDayBtn" style="display:none;" onclick="clearCurrentSession()">تفريغ قائمة اليوم (مدير)</button>
     </div>
@@ -442,8 +495,8 @@ function fail(e) {
 }
 function mapVisit(r) {
   return { id: r.id, name: r.name, phone: r.phone || '', type: r.type, fee: r.fee, paid: r.paid == null ? r.fee : r.paid,
-    vision: !!r.vision_done, lastExam: r.last_exam_date || '', payMethod: r.pay_method, note: r.note || '', status: r.status,
-    updatedAt: Date.parse(r.updated_at) || 0 };
+    paid2: r.paid2 || 0, payMethod2: r.pay_method2 || '', vision: !!r.vision_done, lastExam: r.last_exam_date || '',
+    payMethod: r.pay_method, note: r.note || '', status: r.status, updatedAt: Date.parse(r.updated_at) || 0 };
 }
 function mapPatient(r) {
   return { id: r.id, name: r.name, phone: r.phone || '', lastVisit: r.last_visit || '',
@@ -707,7 +760,7 @@ async function savePatient() {
   if (saving) return;
   const name = document.getElementById('ptName').value.trim();
   if (!name) return showToast('اكتب اسم المريض أولاً');
-  const phone = document.getElementById('ptPhone').value.trim();
+  const phone = normDigits(document.getElementById('ptPhone').value).replace(/[\s-]/g, '');
   const fee = Number(document.getElementById('ptFee').value) || 0;
   const paidRaw = document.getElementById('ptPaid').value;
   const paid = paidRaw === '' ? fee : Number(paidRaw);
@@ -717,6 +770,8 @@ async function savePatient() {
   if (examRaw && !lastExam) return showToast('تاريخ الكشف غير صحيح — اكتبه يوم/شهر/سنة');
   if (fee < 0 || paid < 0) return showToast('المبلغ غير صحيح');
   if (paid > fee) return showToast('المدفوع أكبر من المبلغ الكلي');
+  if (phone && !/^01\d{9}$/.test(phone) && !confirm('رقم الموبايل (' + phone + ') شكله غير مألوف. تحفظ على كده؟')) return;
+  if (editingId === null && db.patients.some(p => normAr(p.name) === normAr(name)) && !confirm('"' + name + '" مسجل بالفعل في اليوم ده. تضيف حجز تاني؟')) return;
   const row = { name, phone, type: selectedType, fee, paid, note, last_exam_date: lastExam, pay_method: paid === 0 ? 'آجل / مجاني' : selectedPay };
 
   saving = true;
@@ -736,13 +791,22 @@ async function savePatient() {
   } finally { saving = false; }
 }
 
-async function collectRemaining(id) {
+let collectId = null;
+function collectRemaining(id) {
   const pt = db.patients.find(p => p.id === id);
-  if (!pt || pt.fee <= pt.paid) return;
-  if (!confirm(`تحصيل المتبقي (${pt.fee - pt.paid} ج) من ${pt.name}؟`)) return;
-  const { data, error } = await sb.from('visits').update({ paid: pt.fee }).eq('id', id).select('id');
+  if (!pt || pt.fee <= pt.paid || !needOnline()) return;
+  collectId = id;
+  document.getElementById('collectTitle').textContent = `تحصيل ${pt.fee - pt.paid} ج من ${pt.name}`;
+  document.getElementById('collectModal').classList.add('open');
+}
+async function doCollect(method) {
+  const pt = db.patients.find(p => p.id === collectId);
+  if (!pt || !needOnline()) return;
+  if (pt.paid2 > 0 && pt.payMethod2 && pt.payMethod2 !== method) return showToast('الدفعة الثانية مسجلة ' + pt.payMethod2);
+  const { data, error } = await sb.from('visits').update({ paid: pt.fee, paid2: pt.paid2 + (pt.fee - pt.paid), pay_method2: method }).eq('id', collectId).select('id');
   if (error) return fail(error);
   if (!data.length) return showToast('غير مسموح');
+  closeModal('collectModal');
   showToast('تم تحصيل المتبقي');
   await refreshAll();
 }
@@ -793,7 +857,7 @@ function renderList() {
   };
   const filtered = sess.patients.filter((p, idx) => {
     if (searchQuery) {
-      const mName = p.name.toLowerCase().includes(searchQuery);
+      const mName = normAr(p.name).includes(searchQuery);
       const mPhone = (p.phone || '').includes(searchQuery);
       if (!mName && !mPhone && String(idx + 1) !== searchQuery) return false;
     }
@@ -830,7 +894,8 @@ function renderList() {
         <div class="meta-row">
           <span class="badge ${p.type === 'consult' ? 'badge-type-consult' : 'badge-type-exam'}">${p.type === 'consult' ? 'استشارة' : 'كشف'}</span>
           ${p.fee > 0 ? `<span class="badge badge-fee">${p.paid} / ${p.fee} ج</span>` : `<span class="badge">بدون مبلغ</span>`}
-          ${p.paid > 0 ? `<span class="badge">${esc(p.payMethod || 'كاش')}</span>` : ''}
+          ${p.paid - p.paid2 > 0 ? `<span class="badge">${esc(p.payMethod || 'كاش')}</span>` : ''}
+          ${p.paid2 > 0 ? `<span class="badge">دفعة ثانية ${p.paid2} · ${esc(p.payMethod2)}</span>` : ''}
           ${p.lastExam ? `<span class="badge">كشف سابق ${toDMY(p.lastExam)} (منذ ${daysBetween(p.lastExam, db.activeDay)} يوم)</span>` : ''}
           ${p.note ? `<span class="badge badge-note">${esc(p.note)}</span>` : ''}
         </div>
@@ -852,6 +917,7 @@ function render() {
   renderDaySelector();
   document.getElementById('stat-total').textContent = sess.patients.length;
   const isEx = p => p.type !== 'consult';
+  checkBackupReminder();
   document.getElementById('stat-lbl-2').textContent = isAdmin ? 'في الانتظار' : 'كشوفات';
   document.getElementById('stat-lbl-3').textContent = isAdmin ? 'تم الكشف' : 'استشارات';
   document.getElementById('stat-waiting').textContent = isAdmin ? sess.patients.filter(p => p.status === 'waiting').length : sess.patients.filter(isEx).length;
@@ -944,8 +1010,8 @@ async function runImport() {
     const days = [...new Set(importRows.map(r => r.day))];
     const { data: existing, error: e0 } = await sb.from('visits').select('day, name').in('day', days);
     if (e0) return fail(e0);
-    const have = new Set(existing.map(v => v.day + '|' + v.name.trim()));
-    const fresh = importRows.filter(r => !have.has(r.day + '|' + r.name));
+    const have = new Set(existing.map(v => v.day + '|' + normAr(v.name)));
+    const fresh = importRows.filter(r => !have.has(r.day + '|' + normAr(r.name)));
     for (let i = 0; i < fresh.length; i += 100) {
       const { error } = await sb.from('visits').insert(fresh.slice(i, i + 100));
       if (error) return fail(error);
@@ -1065,6 +1131,128 @@ function exportMonthExcel() {
   showToast('تم تحميل التقرير');
 }
 
+
+/* ==================== ENGINEERING HELPERS ==================== */
+function normAr(t) {
+  return String(t || '').toLowerCase().replace(/[\u064B-\u0652\u0640]/g, '')
+    .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing) return;
+  const open = document.getElementById('patientModal').classList.contains('open');
+  const t = e.target;
+  if (open && t && t.tagName === 'INPUT') { e.preventDefault(); savePatient(); }
+});
+
+(function watchTopbar() {
+  const tb = document.getElementById('topbar');
+  const set = () => document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight + 'px');
+  set();
+  if (window.ResizeObserver) new ResizeObserver(set).observe(tb); else window.addEventListener('resize', set);
+})();
+
+async function fetchAll(table, order) {
+  let all = [], from = 0;
+  for (;;) {
+    const { data, error } = await sb.from(table).select('*').order(order).range(from, from + 999);
+    if (error) throw error;
+    all = all.concat(data);
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+  return all;
+}
+
+async function exportFullBackup() {
+  if (!isAdmin) return;
+  if (typeof XLSX === 'undefined') return showToast('تأكد من الاتصال بالإنترنت للتصدير');
+  showToast('جاري تجهيز النسخة الاحتياطية...');
+  try {
+    const [v, p] = await Promise.all([fetchAll('visits', 'day'), fetchAll('patients', 'name')]);
+    const vRows = [['اليوم', 'الاسم', 'التليفون', 'النوع', 'المبلغ الكلي', 'المدفوع', 'طريقة الدفع', 'تاريخ الكشف السابق', 'الحالة', 'قياس النظر', 'ملاحظات'],
+      ...v.map(r => [r.day, r.name, r.phone, r.type === 'consult' ? 'استشارة' : 'كشف', r.fee, r.paid, r.pay_method, r.last_exam_date || '',
+        r.status === 'done' ? 'تم' : (r.status === 'inside' ? 'بالداخل' : 'انتظار'), r.vision_done ? 'تم' : 'لم يتم', r.note])];
+    const pRows = [['الاسم', 'التليفون', 'آخر زيارة', 'عدد الزيارات'], ...p.map(r => [r.name, r.phone, r.last_visit || '', r.visits_count])];
+    const wb = XLSX.utils.book_new();
+    wb.Workbook = { Views: [{ RTL: true }] };
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(vRows), 'كل الحجوزات');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pRows), 'سجل المرضى');
+    XLSX.writeFile(wb, 'نسخة_احتياطية_' + localISO(new Date()) + '.xlsx');
+    localStorage.setItem('clinic_last_backup', localISO(new Date())); checkBackupReminder();
+    showToast('تم تحميل النسخة الاحتياطية (' + v.length + ' حجز)');
+  } catch (e) { fail(e); }
+}
+
+
+/* ==================== OPS: offline, password, audit, move day, backup reminder ==================== */
+function needOnline() { if (navigator.onLine === false) { showToast('لا يوجد اتصال بالإنترنت'); return false; } return true; }
+function payBy(P, m) {
+  return P.reduce((t, p) => t + ((p.payMethod || 'كاش') === m ? (p.paid - p.paid2) : 0) + (p.payMethod2 === m ? p.paid2 : 0), 0);
+}
+function syncOffline() { document.getElementById('offlineBanner').style.display = navigator.onLine === false ? 'block' : 'none'; }
+window.addEventListener('online', syncOffline); window.addEventListener('offline', syncOffline); syncOffline();
+['savePatient', 'cycleStatus', 'toggleVision', 'runImport'].forEach(n => {
+  const f = window[n]; window[n] = function () { return needOnline() ? f.apply(this, arguments) : undefined; };
+});
+
+async function forgotPassword() {
+  const email = document.getElementById('loginEmail').value.trim();
+  if (!email) return showLogin('اكتب إيميلك الأول وبعدين اضغط "نسيت كلمة السر"');
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+  showLogin(error ? 'تعذر إرسال الرابط: ' + error.message : 'اتبعت رابط تغيير كلمة السر على إيميلك');
+}
+async function saveNewPassword() {
+  const pw = document.getElementById('newPass').value;
+  if (pw.length < 6) return showToast('كلمة السر لازم 6 أحرف على الأقل');
+  const { error } = await sb.auth.updateUser({ password: pw });
+  if (error) return fail(error);
+  closeModal('passModal'); showToast('تم تغيير كلمة السر');
+}
+
+async function moveDay() {
+  if (!isAdmin || !needOnline()) return;
+  const v = prompt('انقل كل حجوزات ' + dayLabel(db.activeDay) + ' إلى تاريخ (يوم/شهر/سنة):', '');
+  if (!v) return;
+  const iso = parseDMY(v);
+  if (!iso) return showToast('تاريخ غير صحيح');
+  if (iso === db.activeDay) return;
+  if (!confirm('نقل ' + db.patients.length + ' حجز من ' + dayLabel(db.activeDay) + ' إلى ' + dayLabel(iso) + '؟')) return;
+  const { error } = await sb.from('visits').update({ day: iso }).eq('day', db.activeDay);
+  if (error) return fail(error);
+  closeModal('toolsModal');
+  await switchSession(iso);
+  showToast('تم نقل الحجوزات');
+}
+
+async function openAudit() {
+  if (!isAdmin) return;
+  closeModal('toolsModal');
+  document.getElementById('auditModal').classList.add('open');
+  const body = document.getElementById('auditBody');
+  body.innerHTML = '<div class="empty"><span>جاري التحميل...</span></div>';
+  const [a, pr] = await Promise.all([
+    sb.from('audit_log').select('*').order('at', { ascending: false }).limit(100),
+    sb.from('profiles').select('id, full_name, role')]);
+  if (a.error) { body.innerHTML = '<div class="empty"><span>شغّل supabase-update-4.sql الأول</span></div>'; return fail(a.error); }
+  const who = {}; (pr.data || []).forEach(x => who[x.id] = x.full_name || (x.role === 'admin' ? 'المدير' : 'الاستقبال'));
+  body.innerHTML = a.data.length ? `<div style="overflow-x:auto;"><table class="summary-table"><thead><tr><th>الوقت</th><th>بواسطة</th><th>الإجراء</th><th>المريض</th><th>الكلي</th><th>المدفوع</th></tr></thead><tbody>
+    ${a.data.map(r => `<tr><td>${esc(new Date(r.at).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' }))}</td><td>${esc(who[r.user_id] || '—')}</td>
+      <td>${r.action === 'delete' ? 'حذف' : 'تعديل'}</td><td>${esc(r.name)}<br><small>${esc(r.day || '')}</small></td>
+      <td>${r.old_fee}${r.new_fee != null && r.new_fee !== r.old_fee ? ' ← ' + r.new_fee : ''}</td><td>${r.old_paid}${r.new_paid != null && r.new_paid !== r.old_paid ? ' ← ' + r.new_paid : ''}</td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="empty"><span>مفيش تعديلات مسجلة لسه</span></div>';
+}
+
+function checkBackupReminder() {
+  const el = document.getElementById('backupBanner');
+  if (!isAdmin) { el.style.display = 'none'; return; }
+  const last = localStorage.getItem('clinic_last_backup');
+  const days = last ? daysBetween(last, localISO(new Date())) : null;
+  if (days !== null && days < 7) { el.style.display = 'none'; return; }
+  el.innerHTML = (days === null ? 'لسه ماعملتش نسخة احتياطية.' : 'مر ' + days + ' يوم على آخر نسخة احتياطية.') + ' <button class="link-btn" onclick="exportFullBackup()">حمّلها دلوقتي</button>';
+  el.style.display = 'block';
+}
+
 /* ==================== START ==================== */
 (async function init() {
   document.getElementById('clinicTitleInput').value = db.clinicTitle;
@@ -1073,10 +1261,11 @@ function exportMonthExcel() {
   }
   if (typeof supabase === 'undefined') return showLogin('تعذر تحميل مكتبة Supabase — تأكد من الإنترنت');
   sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false,
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true,
             lock: async (name, acquireTimeout, fn) => await fn() }
   });
   try {
+    sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') { document.getElementById('newPass').value = ''; document.getElementById('passModal').classList.add('open'); } });
     const { data: { session } } = await withTimeout(sb.auth.getSession(), 8000);
     if (session) await afterLogin(session.user); else showLogin('');
   } catch (e) { showLogin(''); }
@@ -1209,13 +1398,13 @@ function onPhoneInput() {
 }
 
 function onNameInput() {
-  const val = document.getElementById('ptName').value.trim().toLowerCase();
+  const val = normAr(document.getElementById('ptName').value.trim());
   const box = document.getElementById('autocompleteBox');
   if (val.length < 2) {
     box.style.display = 'none';
     return;
   }
-  const matches = db.directory.filter(p => p.name.toLowerCase().includes(val) || (p.phone && p.phone.includes(val))).slice(0, 6);
+  const matches = db.directory.filter(p => normAr(p.name).includes(val) || (p.phone && p.phone.includes(val))).slice(0, 6);
   if (!matches.length) {
     box.style.display = 'none';
     return;
@@ -1243,8 +1432,8 @@ function buildReportText() {
   const P = sess.patients;
   const sum = (arr, k) => arr.reduce((t, p) => t + (Number(p[k]) || 0), 0);
   const due = sum(P, 'fee'), got = sum(P, 'paid');
-  const cash = sum(P.filter(p => (p.payMethod || 'كاش') === 'كاش'), 'paid');
-  const insta = sum(P.filter(p => p.payMethod === 'إنستاباي'), 'paid');
+  const cash = payBy(P, 'كاش');
+  const insta = payBy(P, 'إنستاباي');
   const exams = P.filter(p => p.type !== 'consult'), consults = P.filter(p => p.type === 'consult');
   const line = (p, i) => `${i + 1}. ${isAdmin ? (p.status === 'done' ? '✅ ' : '⏳ ') : ''}${p.name} — ${p.paid}/${p.fee} ج${p.fee > p.paid ? ' (متبقي ' + (p.fee - p.paid) + ')' : ''}${p.note ? ' [' + p.note + ']' : ''}`;
   const lines = [
@@ -1290,8 +1479,8 @@ function exportSessionExcel() {
     ...(isAdmin ? [['حالات تم كشفها', P.filter(p => p.status === 'done').length], ['تم قياس نظرهم', P.filter(p => p.vision).length]] : []),
     ['', ''],
     ['إجمالي المستحق (ج)', due], ['المحصّل فعلياً (ج)', got],
-    ['منه كاش (ج)', sum(P.filter(p => (p.payMethod || 'كاش') === 'كاش'), 'paid')],
-    ['منه إنستاباي (ج)', sum(P.filter(p => p.payMethod === 'إنستاباي'), 'paid')],
+    ['منه كاش (ج)', payBy(P, 'كاش')],
+    ['منه إنستاباي (ج)', payBy(P, 'إنستاباي')],
     ['المتبقي (ج)', due - got]
   ];
   const mk = (rows, widths) => { const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = widths.map(w => ({ wch: w })); return ws; };
@@ -1310,8 +1499,8 @@ function openFinishDayModal() {
   const P = sess.patients;
   const sum = (arr, k) => arr.reduce((t, p) => t + (Number(p[k]) || 0), 0);
   const due = sum(P, 'fee'), got = sum(P, 'paid');
-  const cash = sum(P.filter(p => (p.payMethod || 'كاش') === 'كاش'), 'paid');
-  const insta = sum(P.filter(p => p.payMethod === 'إنستاباي'), 'paid');
+  const cash = payBy(P, 'كاش');
+  const insta = payBy(P, 'إنستاباي');
   const exams = P.filter(p => p.type !== 'consult').length, consults = P.length - exams;
   const stTxt = p => p.status === 'done' ? 'تم' : (p.status === 'inside' ? 'بالداخل' : 'انتظار');
   document.getElementById('summaryContent').innerHTML = `
@@ -1336,9 +1525,9 @@ function openFinishDayModal() {
 }
 
 function renderDirectory() {
-  const q = document.getElementById('dirSearch').value.trim().toLowerCase();
+  const q = normAr(document.getElementById('dirSearch').value.trim());
   const list = db.directory.map((d, i) => ({ d, i }))
-    .filter(({ d }) => d.name.toLowerCase().includes(q) || (d.phone && d.phone.includes(q)));
+    .filter(({ d }) => normAr(d.name).includes(q) || (d.phone && d.phone.includes(q)));
   document.getElementById('dirCount').textContent = db.directory.length;
   document.getElementById('directoryList').innerHTML = list.length ? list.map(({ d, i }) => `
     <div class="dir-row">
@@ -1381,7 +1570,7 @@ function openDirectoryModal() {
 }
 
 function handleSearch() {
-  searchQuery = document.getElementById('searchInput').value.trim().toLowerCase();
+  searchQuery = normAr(document.getElementById('searchInput').value.trim());
   document.getElementById('clearSearchBtn').style.display = searchQuery ? 'block' : 'none';
   renderList();
 }
