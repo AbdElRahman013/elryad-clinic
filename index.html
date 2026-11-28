@@ -162,6 +162,14 @@
     .last-exam { background: #f6f8fa; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
     .last-exam .field-label { margin-bottom: 6px; }
     .remain-hint { color: var(--muted); }
+  
+    .modal.wide { max-width: 640px; }
+    .rep-tools { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .rep-tools .field-input { flex: 1; }
+    .summary-table tr.rowlink { cursor: pointer; }
+    .summary-table tr.rowlink:hover { background: var(--primary-light); }
+    .summary-table tr.cur td { font-weight: 700; color: var(--primary-dark); }
+    .summary-table tr.total td { font-weight: 700; border-top: 2px solid var(--ink); }
   </style>
 </head>
 <body>
@@ -190,6 +198,7 @@
     <div class="header-actions">
       <span class="icon-btn conn" id="connDot">جاري الاتصال</span>
       <button class="icon-btn" onclick="openDirectoryModal()">سجل المرضى</button>
+      <button class="icon-btn admin-only" onclick="openReports()">التقارير</button>
     </div>
   </div>
 </div>
@@ -325,6 +334,21 @@
       <button class="btn-outline" onclick="exportSessionExcel()">تحميل ملف إكسيل</button>
       <button class="btn-outline" onclick="copyTextReport()">نسخ التقرير</button>
     </div>
+  </div>
+</div>
+
+<!-- Reports Modal (admin) -->
+<div class="modal-backdrop" id="reportsModal" onclick="closeModalOnBg(event, 'reportsModal')">
+  <div class="modal wide">
+    <div class="modal-header">
+      <h3 class="modal-title">التقارير والإيرادات</h3>
+      <button class="close-btn" onclick="closeModal('reportsModal')">إغلاق</button>
+    </div>
+    <div class="rep-tools">
+      <select class="field-input" id="repMonth" onchange="renderReport()"></select>
+      <button class="btn-outline" style="width:auto; padding:10px 14px;" onclick="exportMonthExcel()">تصدير إكسيل</button>
+    </div>
+    <div id="repBody"><div class="empty"><span>جاري التحميل...</span></div></div>
   </div>
 </div>
 
@@ -932,6 +956,113 @@ async function runImport() {
     await refreshAll();
     showToast(`تم استيراد ${fresh.length} حالة` + (skipped ? ` (تخطّيت ${skipped} مكررة)` : ''));
   } finally { saving = false; }
+}
+
+
+/* ==================== MONTHLY REPORTS (admin) ==================== */
+let repData = [];
+const ZERO = () => ({ n: 0, exams: 0, consults: 0, fee: 0, paid: 0, cash: 0, insta: 0, done: 0, vision: 0, days: 0 });
+function addRow(a, r) {
+  ['n', 'exams', 'consults', 'fee', 'paid', 'cash', 'insta', 'done', 'vision'].forEach(k => a[k] += Number(r[k]) || 0);
+  if (Number(r.n) > 0) a.days += 1;
+  return a;
+}
+function monthLabel(ym) { const [y, m] = ym.split('-'); return MONTHS_AR[+m - 1] + ' ' + y; }
+function sumMonth(ym) { return repData.filter(r => r.day.startsWith(ym)).reduce(addRow, ZERO()); }
+
+async function openReports() {
+  if (!isAdmin) return;
+  document.getElementById('reportsModal').classList.add('open');
+  document.getElementById('repBody').innerHTML = '<div class="empty"><span>جاري التحميل...</span></div>';
+  const { data, error } = await sb.from('day_stats').select('*').order('day', { ascending: false }).limit(5000);
+  if (error) {
+    document.getElementById('repBody').innerHTML = '<div class="empty"><span>تعذر تحميل التقارير — شغّل supabase-update-3.sql</span></div>';
+    return fail(error);
+  }
+  buildReports(data);
+}
+
+function buildReports(data) {
+  repData = data;
+  const months = [...new Set(repData.map(r => r.day.slice(0, 7)))].sort().reverse();
+  const cur = db.activeDay ? db.activeDay.slice(0, 7) : months[0];
+  const pick = months.includes(cur) ? cur : months[0];
+  document.getElementById('repMonth').innerHTML = months.map(m => `<option value="${m}" ${m === pick ? 'selected' : ''}>${monthLabel(m)}</option>`).join('');
+  renderReport();
+}
+
+function renderReport() {
+  const box = document.getElementById('repBody');
+  const ym = document.getElementById('repMonth').value;
+  if (!ym) { box.innerHTML = '<div class="empty"><span>مفيش بيانات لسه</span></div>'; return; }
+  const t = sumMonth(ym);
+  const months = [...new Set(repData.map(r => r.day.slice(0, 7)))].sort();
+  const prev = months[months.indexOf(ym) - 1];
+  let delta = '';
+  if (prev) {
+    const p = sumMonth(prev).paid;
+    if (p > 0) { const pc = Math.round((t.paid - p) / p * 100); delta = `<div class="modal-note">${pc >= 0 ? 'أعلى' : 'أقل'} بنسبة ${Math.abs(pc)}% من ${monthLabel(prev)} (${p} ج)</div>`; }
+  }
+  const avg = (a, b) => b ? Math.round(a / b) : 0;
+  const days = repData.filter(r => r.day.startsWith(ym) && r.n > 0).sort((a, b) => a.day.localeCompare(b.day));
+  box.innerHTML = `
+    <div class="sum-head">${monthLabel(ym)}</div>
+    <div class="summary-grid">
+      <div class="sum-card"><div class="val">${t.paid} ج</div><div class="lbl">المحصّل</div></div>
+      <div class="sum-card"><div class="val" style="color:var(--amber);">${t.fee - t.paid} ج</div><div class="lbl">متبقي لم يُحصَّل</div></div>
+      <div class="sum-card"><div class="val">${t.n}</div><div class="lbl">إجمالي الحالات</div></div>
+      <div class="sum-card"><div class="val">${t.days}</div><div class="lbl">أيام العمل</div></div>
+      <div class="sum-card"><div class="val">${t.exams}</div><div class="lbl">كشوفات</div></div>
+      <div class="sum-card"><div class="val">${t.consults}</div><div class="lbl">استشارات</div></div>
+      <div class="sum-card"><div class="val">${t.cash} ج</div><div class="lbl">كاش</div></div>
+      <div class="sum-card"><div class="val">${t.insta} ج</div><div class="lbl">إنستاباي</div></div>
+      <div class="sum-card"><div class="val">${avg(t.paid, t.days)} ج</div><div class="lbl">متوسط المحصّل في اليوم</div></div>
+      <div class="sum-card"><div class="val">${avg(t.n, t.days)}</div><div class="lbl">متوسط الحالات في اليوم</div></div>
+    </div>
+    ${delta}
+    <div class="sum-head" style="margin-top:14px;">أيام الشهر</div>
+    <div style="overflow-x:auto;"><table class="summary-table">
+      <thead><tr><th>اليوم</th><th>حالات</th><th>كشف</th><th>استشارة</th><th>المحصّل</th><th>متبقي</th></tr></thead>
+      <tbody>${days.map(r => `<tr class="rowlink" onclick="goToDay('${r.day}')"><td>${esc(dayLabel(r.day))}</td><td>${r.n}</td><td>${r.exams}</td><td>${r.consults}</td><td>${r.paid}</td><td>${r.fee - r.paid}</td></tr>`).join('')}
+      <tr class="total"><td>الإجمالي</td><td>${t.n}</td><td>${t.exams}</td><td>${t.consults}</td><td>${t.paid}</td><td>${t.fee - t.paid}</td></tr></tbody>
+    </table></div>
+    <div class="sum-head" style="margin-top:14px;">كل الشهور</div>
+    <div style="overflow-x:auto;"><table class="summary-table">
+      <thead><tr><th>الشهر</th><th>أيام</th><th>حالات</th><th>المحصّل</th><th>متبقي</th></tr></thead>
+      <tbody>${[...months].reverse().map(m => { const x = sumMonth(m); return `<tr class="rowlink ${m === ym ? 'cur' : ''}" onclick="document.getElementById('repMonth').value='${m}'; renderReport();"><td>${monthLabel(m)}</td><td>${x.days}</td><td>${x.n}</td><td>${x.paid}</td><td>${x.fee - x.paid}</td></tr>`; }).join('')}</tbody>
+    </table></div>`;
+}
+
+async function goToDay(day) {
+  closeModal('reportsModal');
+  await switchSession(day);
+}
+
+function exportMonthExcel() {
+  if (typeof XLSX === 'undefined') return showToast('تأكد من الاتصال بالإنترنت للتصدير');
+  const ym = document.getElementById('repMonth').value;
+  if (!ym) return;
+  const t = sumMonth(ym);
+  const days = repData.filter(r => r.day.startsWith(ym) && r.n > 0).sort((a, b) => a.day.localeCompare(b.day));
+  const months = [...new Set(repData.map(r => r.day.slice(0, 7)))].sort().reverse();
+  const avg = (a, b) => b ? Math.round(a / b) : 0;
+  const sumRows = [['تقرير شهر', monthLabel(ym)], ['العيادة', db.clinicTitle], ['', ''],
+    ['المحصّل (ج)', t.paid], ['المتبقي (ج)', t.fee - t.paid], ['إجمالي المستحق (ج)', t.fee], ['كاش (ج)', t.cash], ['إنستاباي (ج)', t.insta], ['', ''],
+    ['إجمالي الحالات', t.n], ['كشوفات', t.exams], ['استشارات', t.consults], ['أيام العمل', t.days],
+    ['متوسط المحصّل في اليوم (ج)', avg(t.paid, t.days)], ['متوسط الحالات في اليوم', avg(t.n, t.days)]];
+  const dayRows = [['اليوم', 'حالات', 'كشوفات', 'استشارات', 'المحصّل', 'المتبقي', 'كاش', 'إنستاباي'],
+    ...days.map(r => [dayLabel(r.day), r.n, r.exams, r.consults, r.paid, r.fee - r.paid, r.cash, r.insta]),
+    ['الإجمالي', t.n, t.exams, t.consults, t.paid, t.fee - t.paid, t.cash, t.insta]];
+  const monthRows = [['الشهر', 'أيام', 'حالات', 'كشوفات', 'استشارات', 'المحصّل', 'المتبقي'],
+    ...months.map(m => { const x = sumMonth(m); return [monthLabel(m), x.days, x.n, x.exams, x.consults, x.paid, x.fee - x.paid]; })];
+  const mk = (rows, w) => { const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = w.map(c => ({ wch: c })); return ws; };
+  const wb = XLSX.utils.book_new();
+  wb.Workbook = { Views: [{ RTL: true }] };
+  XLSX.utils.book_append_sheet(wb, mk(sumRows, [28, 22]), 'ملخص الشهر');
+  XLSX.utils.book_append_sheet(wb, mk(dayRows, [24, 9, 10, 10, 11, 11, 10, 11]), 'الأيام');
+  XLSX.utils.book_append_sheet(wb, mk(monthRows, [18, 8, 9, 10, 10, 11, 11]), 'كل الشهور');
+  XLSX.writeFile(wb, 'تقرير_' + ym + '.xlsx');
+  showToast('تم تحميل التقرير');
 }
 
 /* ==================== START ==================== */
