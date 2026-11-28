@@ -328,6 +328,29 @@
   </div>
 </div>
 
+<!-- Import Modal (admin) -->
+<div class="modal-backdrop" id="importModal" onclick="closeModalOnBg(event, 'importModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">استيراد مرضى</h3>
+      <button class="close-btn" onclick="closeModal('importModal')">إغلاق</button>
+    </div>
+    <p class="modal-note">انسخ القايمة من Keep (أو أي ملاحظات) والصقها هنا. كل سطر مريض، مثال: <span dir="ltr">1) نوح عمرو - 200</span> أو <span dir="ltr">10) أحمد جابر - 200 كاش</span>. لو فيه سطر عنوان زي "د حازم 25 - 11" هيتسجل اللي تحته في اليوم ده.</p>
+    <div class="field-group">
+      <textarea class="field-input" id="importText" rows="8" placeholder="الصق القايمة هنا" style="resize:vertical;"></textarea>
+    </div>
+    <div class="pay-grid">
+      <div class="field-group"><label class="field-label">اليوم (لو مفيش عنوان)</label>
+        <input type="text" class="field-input" id="importDay" style="direction:ltr; text-align:right;" /></div>
+      <div class="field-group"><label class="field-label">الحالة</label>
+        <select class="field-input" id="importStatus"><option value="done">تم الكشف</option><option value="waiting">في الانتظار</option></select></div>
+    </div>
+    <button class="btn-outline" onclick="previewImport()">معاينة</button>
+    <div id="importPreview" style="margin-top:12px;"></div>
+    <button class="btn-save" id="importGoBtn" style="display:none;" onclick="runImport()">استيراد الكل</button>
+  </div>
+</div>
+
 <!-- Directory Modal (Returning Patients) -->
 <div class="modal-backdrop" id="directoryModal" onclick="closeModalOnBg(event, 'directoryModal')">
   <div class="modal">
@@ -350,6 +373,7 @@
     <div id="adminToolsSection" style="display:flex; flex-direction:column; gap:9px;">
       <button class="btn-outline" onclick="refreshAll(); showToast('تم التحديث');">تحديث البيانات</button>
       <button class="btn-outline" onclick="doLogout()">تسجيل الخروج</button>
+      <button class="btn-outline admin-only" onclick="openImportModal()">استيراد مرضى من ملاحظات</button>
       <button class="btn-danger" id="clearDayBtn" style="display:none;" onclick="clearCurrentSession()">تفريغ قائمة اليوم (مدير)</button>
     </div>
   </div>
@@ -807,6 +831,101 @@ function render() {
   document.getElementById('stat-total-fee').textContent = paidSum;
   document.getElementById('stat-remain').textContent = feeSum > paidSum ? 'متبقي ' + (feeSum - paidSum) : '';
   renderList();
+}
+
+
+/* ==================== BULK IMPORT (admin) ==================== */
+let importRows = [];
+function normDigits(t) { return t.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)); }
+
+function parseImportText(text, defaultDay, statusOpt) {
+  const rows = [];
+  const year = +defaultDay.slice(0, 4);
+  const DONE = /[☑✓✔✅]|\[\s*x\s*\]/i;
+  const hasMarkers = DONE.test(text) || /[☐]|\[\s*\]/.test(text);
+  let day = defaultDay;
+  normDigits(text).split(/\r?\n/).forEach(raw => {
+    let line = raw.replace(/[\u200e\u200f\u202a-\u202e]/g, '').trim();
+    if (!line) return;
+    const done = DONE.test(line);
+    line = line.replace(/[☑☐✓✔✅]|\[\s*[xX]?\s*\]/g, '').replace(/^[-*•\s]+/, '').trim();
+    if (!line || /^\.+$/.test(line) || /عنصر/.test(line)) return;
+    const hasIdx = /^\d+\s*[).\-–:]/.test(line);
+    const hd = !hasIdx && line.match(/(\d{1,2})\s*[-\/.]\s*(\d{1,2})\s*$/);
+    if (hd) {
+      const dt = new Date(year, +hd[2] - 1, +hd[1]);
+      if (dt.getMonth() === +hd[2] - 1 && dt.getDate() === +hd[1]) { day = localISO(dt); return; }
+    }
+    let body = line.replace(/^\d+\s*[).\-–:]\s*/, '').trim();
+    let phone = '';
+    const pm = body.match(/(?<!\d)(01\d{9})(?!\d)/);
+    if (pm) { phone = pm[1]; body = body.replace(pm[1], ' ').trim(); }
+    let name = body, amount = 200, rest = '';
+    const m = body.match(/^(.*?)\s*[-–—:]\s*(\d+)\s*(.*)$/);
+    if (m) { name = m[1]; amount = +m[2]; rest = m[3]; }
+    const consult = /استشار/.test(body) || (m && amount === 0);
+    name = name.replace(/استشار[ةه]/g, '').replace(/[-–—:\s]+$/g, '').replace(/\s+/g, ' ').trim();
+    if (!name || !/[\u0600-\u06FFA-Za-z]/.test(name)) return;
+    let pay = 'كاش';
+    if (/(انستا|إنستا|instapay)/i.test(rest + ' ' + body)) pay = 'إنستاباي';
+    const note = rest.replace(/كاش|[اإ]نستا\S*|instapay/gi, '').replace(/\s+/g, ' ').trim();
+    const fee = consult ? 0 : amount;
+    rows.push({
+      day, name, phone, type: consult ? 'consult' : 'exam', fee, paid: fee,
+      pay_method: fee === 0 ? 'آجل / مجاني' : pay, note,
+      status: hasMarkers ? (done ? 'done' : 'waiting') : statusOpt
+    });
+  });
+  return rows;
+}
+
+function openImportModal() {
+  if (!isAdmin) return;
+  document.getElementById('importText').value = '';
+  document.getElementById('importDay').value = toDMY(db.activeDay);
+  document.getElementById('importPreview').innerHTML = '';
+  document.getElementById('importGoBtn').style.display = 'none';
+  importRows = [];
+  closeModal('toolsModal');
+  document.getElementById('importModal').classList.add('open');
+}
+
+function previewImport() {
+  const iso = parseDMY(document.getElementById('importDay').value);
+  if (!iso) return showToast('اكتب اليوم بالشكل يوم/شهر/سنة');
+  importRows = parseImportText(document.getElementById('importText').value, iso, document.getElementById('importStatus').value);
+  const box = document.getElementById('importPreview');
+  if (!importRows.length) { box.innerHTML = '<div class="empty"><span>مفيش حالات مفهومة في النص</span></div>'; document.getElementById('importGoBtn').style.display = 'none'; return; }
+  const days = [...new Set(importRows.map(r => r.day))];
+  box.innerHTML = `<div class="modal-note">${importRows.length} حالة في ${days.length} يوم — راجعها قبل الاستيراد</div>
+    <div style="overflow-x:auto;"><table class="summary-table"><thead><tr><th>اليوم</th><th>الاسم</th><th>النوع</th><th>المبلغ</th><th>ملاحظات</th><th>الحالة</th></tr></thead><tbody>
+    ${importRows.map(r => `<tr><td>${toDMY(r.day)}</td><td>${esc(r.name)}${r.phone ? '<br><small>' + esc(r.phone) + '</small>' : ''}</td>
+      <td>${r.type === 'consult' ? 'استشارة' : 'كشف'}</td><td>${r.fee}${r.fee > 0 ? ' · ' + esc(r.pay_method) : ''}</td><td>${esc(r.note)}</td>
+      <td>${r.status === 'done' ? 'تم' : 'انتظار'}</td></tr>`).join('')}</tbody></table></div>`;
+  const go = document.getElementById('importGoBtn');
+  go.textContent = `استيراد ${importRows.length} حالة`;
+  go.style.display = 'block';
+}
+
+async function runImport() {
+  if (!isAdmin || !importRows.length || saving) return;
+  saving = true;
+  try {
+    const days = [...new Set(importRows.map(r => r.day))];
+    const { data: existing, error: e0 } = await sb.from('visits').select('day, name').in('day', days);
+    if (e0) return fail(e0);
+    const have = new Set(existing.map(v => v.day + '|' + v.name.trim()));
+    const fresh = importRows.filter(r => !have.has(r.day + '|' + r.name));
+    for (let i = 0; i < fresh.length; i += 100) {
+      const { error } = await sb.from('visits').insert(fresh.slice(i, i + 100));
+      if (error) return fail(error);
+    }
+    const skipped = importRows.length - fresh.length;
+    closeModal('importModal');
+    importRows = [];
+    await refreshAll();
+    showToast(`تم استيراد ${fresh.length} حالة` + (skipped ? ` (تخطّيت ${skipped} مكررة)` : ''));
+  } finally { saving = false; }
 }
 
 /* ==================== START ==================== */
